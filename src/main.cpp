@@ -13,10 +13,10 @@
 #include "ParticleSim.h"
 #include "render/render.h"
 // 常量定义
-const int WINDOW_WIDTH = 1258;
-const int WINDOW_HEIGHT = 848;
-const int TEXTURE_WIDTH = 1258 >> 1;
-const int TEXTURE_HEIGHT = 848 >> 1;
+static const int WINDOW_WIDTH = 1258;
+static const int WINDOW_HEIGHT = 848;
+static const int TEXTURE_WIDTH = 1258 >> 1;
+static const int TEXTURE_HEIGHT = 848 >> 1;
 
 class Application {
 public:
@@ -50,7 +50,7 @@ public:
 private:
     SDL_Window* window = NULL;
     Render* render = NULL;
-    vk::Extent2D windowSize { 800, 600 };
+    vk::Extent2D windowSize { WINDOW_WIDTH, WINDOW_HEIGHT };
     ParticleSimulator* simulation = NULL;
     bool running = true;
 

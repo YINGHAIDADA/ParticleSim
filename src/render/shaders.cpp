@@ -47,3 +47,27 @@ void Render::createShaderModules() {
 
 	spdlog::info("Shader Modules were created successfully");
 }
+
+// 创建着色器模块
+vk::ShaderModule Render::createShaderModule(const std::vector<char>& code) {
+    vk::ShaderModuleCreateInfo createInfo;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    return VK_ERROR_CHECK(m_LogicalDevice.createShaderModule(createInfo), "Shader Module creating caused an error");
+}
+// 读取着色器文件
+std::vector<char> Render::readFile(const std::string& filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+    
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<char> buffer(fileSize);
+    
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+    
+    return buffer;
+}

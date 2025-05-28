@@ -28,3 +28,14 @@ void Render::createFrameBuffers(vk::Extent2D& windowSize) {
     m_FrameBuffers = frameBuffers;
     spdlog::info("Frame Buffer created successfully");
 }
+
+void Render::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& bufferMemory) {
+    vk::BufferCreateInfo bufferInfo({}, size, usage, vk::SharingMode::eExclusive);
+    buffer = VK_ERROR_CHECK(m_LogicalDevice.createBuffer(bufferInfo), "Buffer creating caused an error");
+    spdlog::info("Buffer created successfully");
+    vk::MemoryRequirements memRequirements = m_LogicalDevice.getBufferMemoryRequirements(buffer);
+    vk::MemoryAllocateInfo allocInfo(memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties));
+    bufferMemory = VK_ERROR_CHECK(m_LogicalDevice.allocateMemory(allocInfo), "Buffer memory allocation caused an error");
+    spdlog::info("Buffer memory allocated successfully");
+    m_LogicalDevice.bindBufferMemory(buffer, bufferMemory, 0);
+}
