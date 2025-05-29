@@ -1,7 +1,7 @@
 #include "render.h"
 
 void Render::createSyncObjects() {
-    spdlog::info("Creating Synchronization objects");
+    SPDLOG_INFO("Creating Synchronization objects");
 
     m_ImageAvailableSemaphore = VK_ERROR_CHECK(
         m_LogicalDevice.createSemaphore(vk::SemaphoreCreateInfo {}),
@@ -21,5 +21,5 @@ void Render::createSyncObjects() {
         "Render Finished Fence creating caused an error"
     );
 
-    spdlog::info("Synchronization objects were created successfully");
+    SPDLOG_INFO("Synchronization objects were created successfully");
 }

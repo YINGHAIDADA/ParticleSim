@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::createInstance() {
-    spdlog::info("Creating Instance");
+    SPDLOG_INFO("Creating Instance");
 
     uint32_t version = VK_ERROR_CHECK(
         vk::enumerateInstanceVersion(),
@@ -14,7 +14,7 @@ void Render::createInstance() {
     appInfo.applicationVersion = VK_MAKE_VERSION(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH);
     appInfo.apiVersion = VK_MAKE_API_VERSION(0, PROJECT_VK_VERSION_MAJOR, PROJECT_VK_VERSION_MINOR, PROJECT_VK_VERSION_PATCH);
 
-    spdlog::info(
+    SPDLOG_INFO(
         "Vulkan sys: {}.{}.{} app: {}.{}.{}",
         VK_API_VERSION_MAJOR(version),
         VK_API_VERSION_MINOR(version),
@@ -48,11 +48,11 @@ void Render::createInstance() {
     m_DebugLayer = supportedLayers.contains("VK_LAYER_KHRONOS_validation");
 
     if (m_DebugLayer) {
-        spdlog::info("Debug layer supported");
+        SPDLOG_INFO("Debug layer supported");
         requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         requiredLayers.push_back("VK_LAYER_KHRONOS_validation");
     } else {
-        spdlog::info("Debug layer not supported");
+        SPDLOG_INFO("Debug layer not supported");
     }
 
     uint32_t sdlRequiredExtensionsCount = 0;
@@ -61,26 +61,26 @@ void Render::createInstance() {
         requiredExtensions.push_back(sdlRequiredExtensions[i]);
     }
 
-    spdlog::info("Check required layers support");
+    SPDLOG_INFO("Check required layers support");
     bool requiredLayersSupported = true;
 
     for (std::string_view requiredLayer : requiredLayers) {
         if (supportedLayers.contains(requiredLayer)) {
-            spdlog::info("  + {}", requiredLayer);
+            SPDLOG_INFO("  + {}", requiredLayer);
         } else {
-            spdlog::info("  - {}", requiredLayer);
+            SPDLOG_INFO("  - {}", requiredLayer);
             requiredLayersSupported = false;
         }
     }
 
-    spdlog::info("Check required extensions support");
+    SPDLOG_INFO("Check required extensions support");
     bool requiredExtensionsSupported = true;
 
     for (std::string_view requiredExtension : requiredExtensions) {
         if (supportedExtensions.contains(requiredExtension)) {
-            spdlog::info("  + {}", requiredExtension);
+            SPDLOG_INFO("  + {}", requiredExtension);
         } else {
-            spdlog::info("  - {}", requiredExtension);
+            SPDLOG_INFO("  - {}", requiredExtension);
             requiredExtensionsSupported = false;
         }
     }
@@ -100,5 +100,5 @@ void Render::createInstance() {
         "Instance creating caused an error"
     );
 
-    spdlog::info("Instance was created successfully");
+    SPDLOG_INFO("Instance was created successfully");
 }

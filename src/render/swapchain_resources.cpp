@@ -2,8 +2,8 @@
 #include "render_utils.h"
 
 void Render::selectSwapchainResources() {
-    spdlog::info("Selecting Swapchain Resources");
-    spdlog::info("  Selecting Swapchain Images");
+    SPDLOG_INFO("Selecting Swapchain Resources");
+    SPDLOG_INFO("  Selecting Swapchain Images");
 
     m_SwapchainImages = VK_ERROR_AND_EMPRY_CHECK(
         m_LogicalDevice.getSwapchainImagesKHR(m_Swapchain),
@@ -11,7 +11,7 @@ void Render::selectSwapchainResources() {
         "Swapchain Images getting returned no results"
     );
 
-    spdlog::info("  Creating Swapchain ImagesViews");
+    SPDLOG_INFO("  Creating Swapchain ImagesViews");
     std::vector<vk::ImageView> swapchainImagesViews {};
     swapchainImagesViews.reserve(m_SwapchainImages.size());
 
@@ -34,5 +34,5 @@ void Render::selectSwapchainResources() {
     }
 
     m_SwapchainImagesViews = swapchainImagesViews;
-    spdlog::info("Swapchain Resources selected successfully");
+    SPDLOG_INFO("Swapchain Resources selected successfully");
 }

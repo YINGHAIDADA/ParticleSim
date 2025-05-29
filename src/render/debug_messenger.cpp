@@ -8,7 +8,7 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
 	void* pUserData
 ) {
 	if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) {
-		spdlog::info("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
+		SPDLOG_INFO("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
 	} else if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
 		spdlog::warn("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
 	} else if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
@@ -21,7 +21,7 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
 void Render::createDebugMessenger() {
     if (!m_DebugLayer) return;
 
-	spdlog::info("Creating Debug Messenger");
+	SPDLOG_INFO("Creating Debug Messenger");
 	m_Dispatcher.init(m_Instance, vkGetInstanceProcAddr);
 
     vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo {};
@@ -40,5 +40,5 @@ void Render::createDebugMessenger() {
 		"Debug Messenger creating caused an error"
 	);
 	
-	spdlog::info("Debug Messenger was created successfully");
+	SPDLOG_INFO("Debug Messenger was created successfully");
 }

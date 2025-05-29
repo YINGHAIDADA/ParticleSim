@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::selectPhysicalDevice() {
-    spdlog::info("Select Physical Device");
+    SPDLOG_INFO("Select Physical Device");
 
     std::vector<vk::PhysicalDevice> physicalDevices = VK_ERROR_AND_EMPRY_CHECK(
         m_Instance.enumeratePhysicalDevices(),
@@ -28,7 +28,7 @@ void Render::selectPhysicalDevice() {
         std::unordered_set<std::string_view> availableExtensions;
         INSERT_ELEMENTS_M(availableExtensions, supportedExtensions, extensionName);
 
-        spdlog::info(
+        SPDLOG_INFO(
             "Check required extensions for {} ({})",
             properties.deviceName.data(),
             properties.deviceID
@@ -37,15 +37,15 @@ void Render::selectPhysicalDevice() {
         bool requiredExtensionsSupported = true;
         for (std::string_view requiredExtension : requiredExtensions) {
             if (availableExtensions.contains(requiredExtension)) {
-                spdlog::info("  + {}", requiredExtension);
+                SPDLOG_INFO("  + {}", requiredExtension);
             } else {
-                spdlog::info("  - {}", requiredExtension);
+                SPDLOG_INFO("  - {}", requiredExtension);
                 requiredExtensionsSupported = false;
             }
         }
 
         if (requiredExtensionsSupported && !localPhysicalDevice) {
-            spdlog::info("  DEVICE SELECTED");
+            SPDLOG_INFO("  DEVICE SELECTED");
             localPhysicalDevice = physicalDevice;
         }
     }

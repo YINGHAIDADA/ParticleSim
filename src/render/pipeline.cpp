@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::createPipeline() {
-    spdlog::info("Creating Pipeline");
+    SPDLOG_INFO("Creating Pipeline");
 
     vk::PipelineVertexInputStateCreateInfo vertexCreateInfo {};
 
@@ -86,5 +86,5 @@ void Render::createPipeline() {
         "Pipeline creating caused an error"
     );
 
-    spdlog::info("Pipeline was created successfully");
+    SPDLOG_INFO("Pipeline was created successfully");
 }

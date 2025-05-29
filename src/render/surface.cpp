@@ -1,7 +1,7 @@
 #include "render.h"
 
 void Render::createSurface() {
-    spdlog::info("Creating Surface");
+    SPDLOG_INFO("Creating Surface");
     VkSurfaceKHR surface;
 
     if (!SDL_Vulkan_CreateSurface(m_Window, m_Instance, nullptr, &surface)) {
@@ -9,5 +9,5 @@ void Render::createSurface() {
     }
 
     m_Surface = surface;
-    spdlog::info("Surface was created successfully");
+    SPDLOG_INFO("Surface was created successfully");
 }

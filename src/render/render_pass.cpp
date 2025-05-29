@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::createRenderPass() {
-    spdlog::info("Creating Render Pass");
+    SPDLOG_INFO("Creating Render Pass");
 
     vk::AttachmentDescription attachment {};
     attachment.loadOp = vk::AttachmentLoadOp::eClear;
@@ -31,5 +31,5 @@ void Render::createRenderPass() {
         "Render Pass creating caused an error"
     );
 
-    spdlog::info("Render Pass was created successfully");
+    SPDLOG_INFO("Render Pass was created successfully");
 }

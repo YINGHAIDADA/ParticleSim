@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::createCommandPool() {
-    spdlog::info("Creating Command Pool");
+    SPDLOG_INFO("Creating Command Pool");
 
     vk::CommandPoolCreateInfo commandPoolCreateInfo {};
     commandPoolCreateInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
@@ -13,11 +13,11 @@ void Render::createCommandPool() {
         "Command Pool creating caused an error"
     );
 
-    spdlog::info("Command Pool was created successfully");
+    SPDLOG_INFO("Command Pool was created successfully");
 }
 
 void Render::createCommandBuffers() {
-    spdlog::info("Creating Command Buffers");
+    SPDLOG_INFO("Creating Command Buffers");
 
     vk::CommandBufferAllocateInfo commandBufferAllocInfo {};
     commandBufferAllocInfo.commandBufferCount = CONTAINER_COUNT(m_SwapchainImages);
@@ -31,5 +31,5 @@ void Render::createCommandBuffers() {
 
     );
 
-    spdlog::info("Command Buffer was created successfully");
+    SPDLOG_INFO("Command Buffer was created successfully");
 }

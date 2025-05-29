@@ -1,7 +1,7 @@
 #include "render.h"
 
 void Render::selectQueueFamilyIndexes() {
-    spdlog::info("Select Queue Family indexes");
+    SPDLOG_INFO("Select Queue Family indexes");
 
     std::vector<vk::QueueFamilyProperties> queueFamilies = m_PhysicalDevice.getQueueFamilyProperties();
     if (queueFamilies.empty()) throw std::runtime_error("Queue Family getting returned no results");
@@ -14,13 +14,13 @@ void Render::selectQueueFamilyIndexes() {
 
 		if (queueFamily.queueFlags & vk::QueueFlagBits::eGraphics) {
             if (queueGraphicFamilyIndex == UINT32_MAX) {
-                spdlog::info("Graphic index {}", i);
+                SPDLOG_INFO("Graphic index {}", i);
                 queueGraphicFamilyIndex = i;
             }
 
             if (queuePresentFamilyIndex == UINT32_MAX) {
                 if (m_PhysicalDevice.getSurfaceSupportKHR(i, m_Surface).result == vk::Result::eSuccess) {
-                    spdlog::info("Present index {}", i);
+                    SPDLOG_INFO("Present index {}", i);
                     queuePresentFamilyIndex = i;
                 }
             }

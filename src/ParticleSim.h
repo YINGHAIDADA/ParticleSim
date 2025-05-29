@@ -75,13 +75,14 @@ struct Particle {
 
 class ParticleSimulator {
 private:
-    std::vector<Particle> particles;
-    std::vector<Color> textureBuffer;
+    std::vector<Particle>* particles;
+    
     SDL_Window* window;
+    int textureWidth, textureHeight;
     
 public:
     ParticleSimulator();
-    ParticleSimulator(int texyure_wdith, int texture_height);
+    ParticleSimulator(int texture_wdith, int texture_height);
     ~ParticleSimulator();
 
     void init();

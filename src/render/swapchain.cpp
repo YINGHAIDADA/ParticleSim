@@ -1,7 +1,7 @@
 #include "render.h"
 
 void Render::createSwapchain(vk::Extent2D& windowSize) {
-    spdlog::info("Creating Swapchain");
+    SPDLOG_INFO("Creating Swapchain");
 
     vk::SurfaceCapabilitiesKHR surfaceCapabilities = VK_ERROR_CHECK(
         m_PhysicalDevice.getSurfaceCapabilitiesKHR(m_Surface),
@@ -13,14 +13,14 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
         minImageCount = surfaceCapabilities.maxImageCount;
     }
 
-    vk::Extent2D extent = surfaceCapabilities.currentExtent;
-    if (extent.height == UINT32_MAX || extent.width == UINT32_MAX) {
-        extent.width = std::min(
+    m_SwapchainExtent = surfaceCapabilities.currentExtent;
+    if (m_SwapchainExtent.height == UINT32_MAX || m_SwapchainExtent.width == UINT32_MAX) {
+        m_SwapchainExtent.width = std::min(
             surfaceCapabilities.maxImageExtent.width,
             std::max(surfaceCapabilities.minImageExtent.width, windowSize.width)
         );
 
-        extent.height = std::min(
+        m_SwapchainExtent.height = std::min(
             surfaceCapabilities.maxImageExtent.height,
             std::max(surfaceCapabilities.minImageExtent.height, windowSize.height)
         );
@@ -31,7 +31,7 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
     swapchainCreateInfo.minImageCount = minImageCount;
     swapchainCreateInfo.imageFormat = vk::Format::eB8G8R8A8Unorm;
     swapchainCreateInfo.imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
-    swapchainCreateInfo.imageExtent = extent;
+    swapchainCreateInfo.imageExtent = m_SwapchainExtent;
     swapchainCreateInfo.imageArrayLayers = 1;
     swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
     swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
@@ -60,5 +60,5 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
         "Swapchain creating caused an error"
     );
 
-    spdlog::info("Swapchain was created successfully");
+    SPDLOG_INFO("Swapchain was created successfully");
 }

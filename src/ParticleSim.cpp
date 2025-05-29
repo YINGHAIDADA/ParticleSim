@@ -8,10 +8,14 @@
 
 #include "ParticleSim.h"
 
-ParticleSimulator::ParticleSimulator(int texyure_wdith, int texture_height) : particles(texyure_wdith*texture_height),
-textureBuffer(texyure_wdith*texture_height) {}
+ParticleSimulator::ParticleSimulator(int texture_wdith, int texture_height) {
+    this->textureWidth = texture_wdith;
+    this->textureHeight = texture_height;
+    this->particles = new std::vector<Particle>(texture_wdith * texture_height, Particle{MAT_EMPTY});
+}
 ParticleSimulator::~ParticleSimulator() {
-    
+    delete particles;
+    particles = nullptr;
 }
 
 void ParticleSimulator::init() {
@@ -19,8 +23,7 @@ void ParticleSimulator::init() {
 }
 
 void ParticleSimulator::resetParticles() {
-    std::fill(particles.begin(), particles.end(), Particle{MAT_EMPTY});
-    std::fill(textureBuffer.begin(), textureBuffer.end(), Color{0,0,0,0});
+    std::fill(particles->begin(), particles->end(), Particle{MAT_EMPTY});
 }
 
 void ParticleSimulator::update(float deltaTime) {

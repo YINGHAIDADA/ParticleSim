@@ -22,10 +22,10 @@ std::vector<char> loadFile(const char* filePath) {
 }
 
 void Render::createShaderModules() {
-	spdlog::info("Creating Shader Modules");
+	SPDLOG_INFO("Creating Shader Modules");
 
-    std::vector<char> vertexContent = loadFile("../../shaders/basic_vert.spv");
-	std::vector<char> fragmentContent = loadFile("../../shaders/basic_frag.spv");
+    std::vector<char> vertexContent = loadFile("assets/shaders/basic_vert.spv");
+	std::vector<char> fragmentContent = loadFile("assets/shaders/basic_frag.spv");
 
 	vk::ShaderModuleCreateInfo vertexInfo {};
 	vertexInfo.codeSize = vertexContent.size();
@@ -45,7 +45,7 @@ void Render::createShaderModules() {
 		"Fragment Shader Module creating caused an error"
 	);
 
-	spdlog::info("Shader Modules were created successfully");
+	SPDLOG_INFO("Shader Modules were created successfully");
 }
 
 // 创建着色器模块

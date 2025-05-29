@@ -155,6 +155,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${SDL3_TTF_INCLUDE_DIR}   # SDL3_ttf 头文件路径
     ${Vulkan_INCLUDE_DIR}     # Vulkan 头文件
     ${INCLUDE_DIRS}
+    third_party/include/stb
 )
 
 # 链接库文件

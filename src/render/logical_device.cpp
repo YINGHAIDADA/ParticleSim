@@ -2,7 +2,7 @@
 #include "render_utils.h"
 
 void Render::createLogicalDevice() {
-    spdlog::info("Creating Logical Device");
+    SPDLOG_INFO("Creating Logical Device");
 
     const float queuePriority = 1.0f;
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
@@ -38,5 +38,5 @@ void Render::createLogicalDevice() {
 
     m_GraphicQueue = m_LogicalDevice.getQueue(m_QueueGraphicFamilyIndex, 0);
     m_PresentQueue = m_LogicalDevice.getQueue(m_QueuePresentFamilyIndex, 0);
-    spdlog::info("Logical Device was created successfully");
+    SPDLOG_INFO("Logical Device was created successfully");
 }
