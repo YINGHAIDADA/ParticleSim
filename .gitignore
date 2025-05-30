@@ -1,4 +1,4 @@
 .vscode/
 output/
-third_party/include/
+third_party
 **/logs.txt

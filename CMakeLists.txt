@@ -7,13 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 set(SDL_STATIC ON)
+include(externalFunctions.cmake)
+
+# 下载所有依赖
+download_all_dependencies()
 # ----------------------------------------
 # 配置 SDL3 路径（项目内第三方库）
 # ----------------------------------------
-set(SDL3_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/include/sdl3")
-set(SDL3_IMAGE_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/include/sdl3_image")
-set(SDL2_MIXER_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/include/sdl2_mixer")
-set(SDL3_TTF_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/include/sdl3_ttf")
+set(SDL3_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/SDL3")
+set(SDL3_IMAGE_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/SDL3_image")
+set(SDL2_MIXER_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/SDL2_mixer")
+set(SDL3_TTF_BASE_DIR "${CMAKE_SOURCE_DIR}/third_party/SDL3_ttf")
 
 # 头文件路径（直接指定）
 set(SDL3_INCLUDE_DIR "${SDL3_BASE_DIR}/include")
@@ -155,7 +159,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${SDL3_TTF_INCLUDE_DIR}   # SDL3_ttf 头文件路径
     ${Vulkan_INCLUDE_DIR}     # Vulkan 头文件
     ${INCLUDE_DIRS}
-    third_party/include/stb
+    third_party/stb
 )
 
 # 链接库文件
