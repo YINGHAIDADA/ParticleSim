@@ -24,6 +24,10 @@ void Render::init(vk::Extent2D& windowSize) {
         Render::createRenderPass();
         Render::createFrameBuffers(windowSize);
         Render::createPipeline();
+
+        //Render::initResources();
+
+
     } catch(const std::runtime_error& error) {
         spdlog::error("Vulkan init error: {}", error.what());
     }
@@ -463,50 +467,6 @@ void Render::drawText(vk::CommandBuffer cmd, const std::string &text, float x, f
     }
 }
 
-// 重新创建交换链
-void Render::recreateSwapchain(vk::Extent2D& newSize) {
-    // 清理旧资源
-    for (auto& framebuffer : m_FrameBuffers) {
-        m_LogicalDevice.destroyFramebuffer(framebuffer);
-    }
-    m_FrameBuffers.clear();
-    
-    // 创建新交换链
-    createSwapchain(newSize);
-    createFrameBuffers(newSize);
-}
-
-vk::CommandBuffer Render::beginSingleTimeCommands() {
-    vk::CommandBufferAllocateInfo allocInfo{};
-    allocInfo.level = vk::CommandBufferLevel::ePrimary;
-    allocInfo.commandPool = m_CommandPool;
-    allocInfo.commandBufferCount = 1;
-
-    vk::CommandBuffer commandBuffer;
-    commandBuffer = VK_ERROR_AND_EMPRY_CHECK(m_LogicalDevice.allocateCommandBuffers(allocInfo),
-        "Command Buffer creating caused an error",
-        "Command Buffer creating returned no results")[0];
-
-    vk::CommandBufferBeginInfo beginInfo{};
-    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
-    commandBuffer.begin(beginInfo);
-
-    return commandBuffer;
-}
-
-void Render::endSingleTimeCommands(vk::CommandBuffer &commandBuffer) {
-    commandBuffer.end();
-
-    vk::SubmitInfo submitInfo{};
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-
-    m_GraphicQueue.submit(1, &submitInfo, nullptr);
-    m_GraphicQueue.waitIdle();
-
-    m_LogicalDevice.freeCommandBuffers(m_CommandPool, 1, &commandBuffer);
-}
-
 
 void Render::createTexture(Texture& tex, uint32_t width, uint32_t height, 
                           vk::Format format, vk::ImageUsageFlags usage, 
@@ -625,10 +585,7 @@ void Render::createTexture(Texture& tex, uint32_t width, uint32_t height,
 }
 
 void Render::initResources() {
-    // 创建命令缓冲区
-    createCommandBuffers();
-    // 创建着色器
-    createShaderModules();
+    
     // 创建描述符集布局
     vk::DescriptorSetLayoutBinding samplerBinding;
     samplerBinding.binding = 0;
@@ -737,134 +694,6 @@ void Render::initResources() {
     //createPostEffectPasses();
     // 加载UI字体
     construct_font_data();
-}
-
-void Render::createUIPipeline() {
-    // 着色器阶段
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
-    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
-    vertShaderStageInfo.module = createShaderModule(readFile("shaders/ui.vert.spv"));
-    vertShaderStageInfo.pName = "main";
-    
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
-    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
-    fragShaderStageInfo.module = createShaderModule(readFile("shaders/ui.frag.spv"));
-    fragShaderStageInfo.pName = "main";
-    
-    std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {
-        vertShaderStageInfo, fragShaderStageInfo
-    };
-    
-    // 顶点输入
-    auto bindingDescription = TextVertex::getBindingDescription();
-    auto attributeDescriptions = TextVertex::getAttributeDescriptions();
-    
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = 
-        static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-    
-    // 输入装配
-    vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
-    inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-    
-    // 视口和裁剪
-    vk::Viewport viewport(0.0f, 0.0f, 
-                         static_cast<float>(g_texture_width), 
-                         static_cast<float>(g_texture_height), 
-                         0.0f, 1.0f);
-    vk::Rect2D scissor({0, 0}, {g_texture_width, g_texture_height});
-    
-    vk::PipelineViewportStateCreateInfo viewportState;
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
-    
-    // 光栅化
-    vk::PipelineRasterizationStateCreateInfo rasterizer;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = vk::PolygonMode::eFill;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = vk::CullModeFlagBits::eNone;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
-    rasterizer.depthBiasEnable = VK_FALSE;
-    
-    // 多重采样
-    vk::PipelineMultisampleStateCreateInfo multisampling;
-    multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
-    
-    // 颜色混合
-    vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-    colorBlendAttachment.colorWriteMask = 
-        vk::ColorComponentFlagBits::eR | 
-        vk::ColorComponentFlagBits::eG | 
-        vk::ColorComponentFlagBits::eB | 
-        vk::ColorComponentFlagBits::eA;
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-    
-    vk::PipelineColorBlendStateCreateInfo colorBlending;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = vk::LogicOp::eCopy;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    
-    // 动态状态
-    std::vector<vk::DynamicState> dynamicStates = {
-        vk::DynamicState::eViewport,
-        vk::DynamicState::eScissor
-    };
-    
-    vk::PipelineDynamicStateCreateInfo dynamicState;
-    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-    
-    // Push constant范围
-    vk::PushConstantRange pushConstantRange;
-    pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eFragment;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = 4 * sizeof(float); // RGBA颜色
-    
-    // 管线布局
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &m_descriptor_set_layout;
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-    
-    m_pipeline_layout = VK_ERROR_CHECK(m_LogicalDevice.createPipelineLayout(pipelineLayoutInfo),"createUIPipeline: Failed to create pipeline layout");
-    
-    // 创建UI管线
-    vk::GraphicsPipelineCreateInfo pipelineInfo;
-    pipelineInfo.stageCount = shaderStages.size();
-    pipelineInfo.pStages = shaderStages.data();
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = m_pipeline_layout;
-    pipelineInfo.renderPass = m_RenderPass; // 使用主渲染通道
-    pipelineInfo.subpass = 0;
-    
-    m_ui_pipeline = m_LogicalDevice.createGraphicsPipeline(nullptr, pipelineInfo).value;
-    
-    // 清理着色器模块
-    m_LogicalDevice.destroyShaderModule(vertShaderStageInfo.module);
-    m_LogicalDevice.destroyShaderModule(fragShaderStageInfo.module);
 }
 
 void Render::construct_font_data() {
@@ -1056,129 +885,6 @@ void Render::createOffscreenRenderPass() {
     renderPassInfo.pDependencies = &dependency;
     
     m_offscreen_render_pass = VK_ERROR_CHECK(m_LogicalDevice.createRenderPass(renderPassInfo),"createOffscreenRenderPass: Failed to create render pass");
-}
-void Render::createMainPipeline() {
-    // 着色器阶段
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
-    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
-    vertShaderStageInfo.module = m_VertexShader;
-    vertShaderStageInfo.pName = "main";
-    
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
-    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
-    fragShaderStageInfo.module = m_FragmentShader;
-    vertShaderStageInfo.pName = "main";
-    
-    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-    
-    // 顶点输入
-    vk::VertexInputBindingDescription bindingDescription;
-    bindingDescription.binding = 0;
-    bindingDescription.stride = 4 * sizeof(float); // position + UV
-    bindingDescription.inputRate = vk::VertexInputRate::eVertex;
-    
-    std::array<vk::VertexInputAttributeDescription, 2> attributeDescriptions;
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = vk::Format::eR32G32Sfloat;
-    attributeDescriptions[0].offset = 0;
-    
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = vk::Format::eR32G32Sfloat;
-    attributeDescriptions[1].offset = 2 * sizeof(float);
-    
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-    
-    // 输入装配
-    vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
-    inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-    
-    // 视口和裁剪
-    vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(g_texture_width), static_cast<float>(g_texture_height), 0.0f, 1.0f);
-    vk::Rect2D scissor({0, 0}, {g_texture_width, g_texture_height});
-    
-    vk::PipelineViewportStateCreateInfo viewportState;
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
-    
-    // 光栅化
-    vk::PipelineRasterizationStateCreateInfo rasterizer;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = vk::PolygonMode::eFill;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = vk::CullModeFlagBits::eNone;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
-    rasterizer.depthBiasEnable = VK_FALSE;
-    
-    // 多重采样
-    vk::PipelineMultisampleStateCreateInfo multisampling;
-    multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
-    
-    // 颜色混合
-    vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-    colorBlendAttachment.colorWriteMask = 
-        vk::ColorComponentFlagBits::eR | 
-        vk::ColorComponentFlagBits::eG | 
-        vk::ColorComponentFlagBits::eB | 
-        vk::ColorComponentFlagBits::eA;
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-    
-    vk::PipelineColorBlendStateCreateInfo colorBlending;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = vk::LogicOp::eCopy;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    
-    // 动态状态
-    std::vector<vk::DynamicState> dynamicStates = {
-        vk::DynamicState::eViewport,
-        vk::DynamicState::eScissor
-    };
-    
-    vk::PipelineDynamicStateCreateInfo dynamicState;
-    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-    
-    // 管线布局
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &m_descriptor_set_layout;
-    
-    m_pipeline_layout = VK_ERROR_CHECK(m_LogicalDevice.createPipelineLayout(pipelineLayoutInfo),"createMainPipeline: Failed to create pipeline layout!");
-    
-    // 创建图形管线
-    vk::GraphicsPipelineCreateInfo pipelineInfo;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = m_pipeline_layout;
-    pipelineInfo.renderPass = m_offscreen_render_pass;
-    pipelineInfo.subpass = 0;
-    pipelineInfo.basePipelineHandle = nullptr;
-    
-    m_Pipeline = VK_ERROR_CHECK(m_LogicalDevice.createGraphicsPipeline(nullptr, pipelineInfo),"createMainPipeline: Failed to create graphics pipeline");
 }
 
 // 辅助函数实现

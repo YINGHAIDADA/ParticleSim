@@ -1,3 +1,4 @@
+#pragma once
 // main.cpp
 #include <SDL3/SDL.h>
 #include <stdint.h>
@@ -5,6 +6,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <algorithm>
+
+#include "Math.h"
 
 // 粒子类型定义
 enum MaterialType {
@@ -26,10 +29,6 @@ enum MaterialType {
 
 struct Color {
     uint8_t r, g, b, a;
-};
-
-struct Vec2{
-    float x, y;
 };
 
 struct Particle {
@@ -75,10 +74,71 @@ struct Particle {
 
 class ParticleSimulator {
 private:
-    std::vector<Particle>* particles;
+    std::vector<Particle>* m_particles = {0};
+    Color* color_buffer = {0};
     
-    SDL_Window* window;
-    int textureWidth, textureHeight;
+    SDL_Window* m_window;
+    int m_textureWidth, m_textureHeight;
+
+    float m_deltaTime;
+
+    int32_t compute_idx(int32_t x, int32_t y)
+    {
+        return (y * m_textureWidth + x);
+    }
+
+    int32_t in_bounds(int32_t x, int32_t y)
+    {
+        if (x < 0 || x > (m_textureWidth - 1) || y < 0 || y > (m_textureHeight - 1)) return false;
+        return true;
+    }
+
+    int32_t is_empty(int32_t x, int32_t y)
+    {
+        return (in_bounds(x, y) && (*m_particles)[compute_idx(x, y)].id == mat_id_empty);
+    }
+
+    Particle get_particle_at(int32_t x, int32_t y)
+    {
+        return (*m_particles)[compute_idx(x, y)];
+    }
+
+    void write_data(int32_t idx, Particle p)
+    {
+        // Write into particle data for id value
+        (*m_particles)[idx] = p;
+        color_buffer[idx] = p.color;
+    }
+
+    Particle particle_empty();
+    Particle particle_sand();
+    Particle particle_water();
+    Particle particle_salt();
+    Particle particle_wood();
+    Particle particle_fire();
+    Particle particle_lava();
+    Particle particle_smoke();
+    Particle particle_ember();
+    Particle particle_steam();
+    Particle particle_gunpowder();
+    Particle particle_oil();
+    Particle particle_stone();
+    Particle particle_acid();
+
+    // Particle updates
+    void update_particle_sim();
+    void update_sand(uint32_t x, uint32_t y);
+    void update_water(uint32_t x, uint32_t y);
+    void update_salt(uint32_t x, uint32_t y);
+    void update_fire(uint32_t x, uint32_t y);
+    void update_lava(uint32_t x, uint32_t y);
+    void update_smoke(uint32_t x, uint32_t y);
+    void update_ember(uint32_t x, uint32_t y);
+    void update_steam(uint32_t x, uint32_t y);
+    void update_gunpowder(uint32_t x, uint32_t y);
+    void update_oil(uint32_t x, uint32_t y);
+    void update_acid(uint32_t x, uint32_t y);
+    void update_default(uint32_t x, uint32_t y);
     
 public:
     ParticleSimulator();
@@ -90,5 +150,12 @@ public:
     void resetParticles();
 
     void update(float deltaTime);
+
+    float m_gravity = 10.f; // pixels per second per second
+    float m_selection_radius = 10.f;
+    bool m_show_material_selection_panel = true;
+    bool m_run_simulation = true;
+    bool m_show_frame_count = true;
+    bool m_use_post_processing = true;
 
 };

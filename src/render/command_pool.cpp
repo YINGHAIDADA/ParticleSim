@@ -33,3 +33,34 @@ void Render::createCommandBuffers() {
 
     SPDLOG_INFO("Command Buffer was created successfully");
 }
+
+vk::CommandBuffer Render::beginSingleTimeCommands() {
+    vk::CommandBufferAllocateInfo allocInfo{};
+    allocInfo.level = vk::CommandBufferLevel::ePrimary;
+    allocInfo.commandPool = m_CommandPool;
+    allocInfo.commandBufferCount = 1;
+
+    vk::CommandBuffer commandBuffer;
+    commandBuffer = VK_ERROR_AND_EMPRY_CHECK(m_LogicalDevice.allocateCommandBuffers(allocInfo),
+        "Command Buffer creating caused an error",
+        "Command Buffer creating returned no results")[0];
+
+    vk::CommandBufferBeginInfo beginInfo{};
+    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+    commandBuffer.begin(beginInfo);
+
+    return commandBuffer;
+}
+
+void Render::endSingleTimeCommands(vk::CommandBuffer &commandBuffer) {
+    commandBuffer.end();
+
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    m_GraphicQueue.submit(1, &submitInfo, nullptr);
+    m_GraphicQueue.waitIdle();
+
+    m_LogicalDevice.freeCommandBuffers(m_CommandPool, 1, &commandBuffer);
+}

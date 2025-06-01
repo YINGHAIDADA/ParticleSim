@@ -62,3 +62,16 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
 
     SPDLOG_INFO("Swapchain was created successfully");
 }
+
+// 重新创建交换链
+void Render::recreateSwapchain(vk::Extent2D& newSize) {
+    // 清理旧资源
+    for (auto& framebuffer : m_FrameBuffers) {
+        m_LogicalDevice.destroyFramebuffer(framebuffer);
+    }
+    m_FrameBuffers.clear();
+    
+    // 创建新交换链
+    createSwapchain(newSize);
+    createFrameBuffers(newSize);
+}
