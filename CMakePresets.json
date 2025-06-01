@@ -42,17 +42,12 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/output/${presetName}",
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "clang",
-                "CMAKE_CXX_COMPILER": "clang"
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
             },
             "architecture": {
                 "value": "x64",
                 "strategy": "external"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "macOS"
             }
         },
         {

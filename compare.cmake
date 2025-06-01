@@ -15,15 +15,8 @@ include(externalFunctions.cmake)
 # macOS 特定配置
 # -------------------------------------------
 if(APPLE)
-    
-    # 解决标准库可用性问题
-    add_compile_options(-D_LIBCPP_DISABLE_AVAILABILITY)
-    
     # 设置 macOS 部署目标版本（根据需要调整）
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS deployment version")
-
-    # 修复数学函数问题
-    add_compile_options(-D_DARWIN_C_SOURCE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment version")
     
     # 启用 ARC (Automatic Reference Counting)
     set(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES")
@@ -94,78 +87,30 @@ message(NOTICE "✅ SDL3 loaded")
 # ----------------------------------------
 if(APPLE)
     # macOS 上使用 MoltenVK
-    set(MOLTENVK_PATHS
-        # /usr/local        # Homebrew 默认安装路径
-        /opt/homebrew     # Apple Silicon Homebrew 路径
-        # ${CMAKE_BINARY_DIR}/_deps # 如果通过 CMake 下载
-        # ${CMAKE_CURRENT_SOURCE_DIR}/third_party # 本地副本
-    )
+    find_package(MoltenVK REQUIRED)
     
-    # 查找 MoltenVK 头文件
-    find_path(MoltenVK_INCLUDE_DIR
-        NAMES MoltenVK/mvk_vulkan.h
-        PATHS ${MOLTENVK_PATHS}
-        PATH_SUFFIXES include
-        DOC "MoltenVK include directory"
-    )
-    
-    # 查找 MoltenVK 库文件
-    find_library(MoltenVK_LIBRARY
-        NAMES MoltenVK
-        PATHS ${MOLTENVK_PATHS}
-        PATH_SUFFIXES lib
-        DOC "MoltenVK library"
-    )
-    
-    # 查找 Vulkan 框架
-    find_library(VULKAN_FRAMEWORK
-        NAMES vulkan
-        PATHS ${MOLTENVK_PATHS}
-        PATH_SUFFIXES lib
-        DOC "Vulkan framework"
-    )
-
-    # 验证找到的路径
-    if(NOT MoltenVK_INCLUDE_DIR)
-        message(FATAL_ERROR "❌ MoltenVK include directory not found. Install with: brew install molten-vk")
-    endif()
-    
-    if(NOT MoltenVK_LIBRARY)
-        message(FATAL_ERROR "❌ MoltenVK library not found. Install with: brew install molten-vk")
-    endif()
-    
-    if(NOT VULKAN_FRAMEWORK)
-        message(FATAL_ERROR "❌ Vulkan framework not found. Install with: brew install vulkan-headers")
-    endif()
-    
-    message(STATUS "✅ Found MoltenVK include at: ${MoltenVK_INCLUDE_DIR}")
-    message(STATUS "✅ Found MoltenVK library at: ${MoltenVK_LIBRARY}")
-    message(STATUS "✅ Found Vulkan framework at: ${VULKAN_FRAMEWORK}")
-
+    message(STATUS "MoltenVK found: ${MoltenVK_INCLUDE_DIR}")
+    message(STATUS "MoltenVK libraries: ${MoltenVK_LIBRARIES}")
     
     # 创建 Vulkan 目标
     add_library(Vulkan::Vulkan INTERFACE IMPORTED)
     target_include_directories(Vulkan::Vulkan INTERFACE
         ${MoltenVK_INCLUDE_DIR}
-        ${MoltenVK_INCLUDE_DIR}/MoltenVK
     )
     target_link_libraries(Vulkan::Vulkan INTERFACE
-        ${MoltenVK_LIBRARY}
-        # ${VULKAN_FRAMEWORK}
-        # ${METAL_LIBRARY}
-        # ${QUARTZCORE_LIBRARY}
-        # ${COREFOUNDATION_LIBRARY}
+        ${MoltenVK_LIBRARIES}
     )
-    
+    target_link_libraries(Vulkan::Vulkan INTERFACE
+        ${METAL_LIBRARY}
+        ${QUARTZCORE_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+    )
     
     # 添加必要的编译定义
     target_compile_definitions(Vulkan::Vulkan INTERFACE
         VK_USE_PLATFORM_MACOS_MVK
         VK_NO_PROTOTYPES
     )
-
-    # 添加 macOS 特定的链接选项
-    # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework Metal -framework MetalKit -framework QuartzCore")
 else()
     # 其他平台使用标准 Vulkan
     find_package(Vulkan REQUIRED)
@@ -252,11 +197,45 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # 平台特定配置（Windows）
 # ----------------------------------------
 if(WIN32)
-
     # 链接 Windows 系统库
     target_link_libraries(${PROJECT_NAME} PRIVATE
         user32.lib
         shell32.lib
         dxguid.lib
+    )
+endif()
+
+# ----------------------------------------
+# macOS 应用包配置（可选）
+# ----------------------------------------
+if(APPLE)
+    # 设置应用包属性
+    set(MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME})
+    set(MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})
+    set(MACOSX_BUNDLE_COPYRIGHT "Copyright © 2023 Your Company")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.yinghaidada.${PROJECT_NAME}")
+    set(MACOSX_BUNDLE_ICON_FILE "")
+    set(MACOSX_BUNDLE_INFO_STRING "")
+    
+    # 配置为应用包
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macOS/Info.plist.in"
+    )
+    
+    # 添加资源目录
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+                "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
+        )
+    endif()
+    
+    # 复制 Vulkan 相关库到应用包
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${MoltenVK_LIBRARY}"
+            "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Frameworks"
     )
 endif()

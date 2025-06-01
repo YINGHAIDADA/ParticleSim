@@ -238,31 +238,31 @@ void ParticleSimulator::update_sand(uint32_t x, uint32_t y)
 		}
 	}
 	//Simple falling, changing the velocity here ruins everything. I need to redo this entire simulation.
-	else if (in_bounds(x, y + 1) && ((is_empty(x, y + 1) || ((*m_particles)[b_idx].id == mat_id_water)))) {
-		p->velocity.y += (m_gravity * m_deltaTime);
-		Particle tmp_b = get_particle_at(x, y + 1);
-		write_data(b_idx, *p);
-		write_data(read_idx, tmp_b);
-	}
-	else if (in_bounds(x - 1, y + 1) && ((is_empty(x - 1, y + 1) || (*m_particles)[bl_idx].id == mat_id_water))) {
-		p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
-		p->velocity.y += (m_gravity * m_deltaTime);
-		Particle tmp_b = get_particle_at(x - 1, y + 1);
-		write_data(bl_idx, *p);
-		write_data(read_idx, tmp_b);
-	}
-	else if (in_bounds(x + 1, y + 1) && ((is_empty(x + 1, y + 1) || (*m_particles)[br_idx].id == mat_id_water))) {
-		p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
-		p->velocity.y += (m_gravity * m_deltaTime);
-		Particle tmp_b = get_particle_at(x + 1, y + 1);
-		write_data(br_idx, *p);
-		write_data(read_idx, tmp_b);
-	}
-	else if (is_in_liquid(x, y, &lx, &ly) && Utilities::random_val(0, 10) == 0) {
-		Particle tmp_b = get_particle_at(lx, ly);
-		write_data(compute_idx(lx, ly), *p);
-		write_data(read_idx, tmp_b);
-	}
+	// else if (in_bounds(x, y + 1) && ((is_empty(x, y + 1) || ((*m_particles)[b_idx].id == mat_id_water)))) {
+	// 	p->velocity.y += (m_gravity * m_deltaTime);
+	// 	Particle tmp_b = get_particle_at(x, y + 1);
+	// 	write_data(b_idx, *p);
+	// 	write_data(read_idx, tmp_b);
+	// }
+	// else if (in_bounds(x - 1, y + 1) && ((is_empty(x - 1, y + 1) || (*m_particles)[bl_idx].id == mat_id_water))) {
+	// 	p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
+	// 	p->velocity.y += (m_gravity * m_deltaTime);
+	// 	Particle tmp_b = get_particle_at(x - 1, y + 1);
+	// 	write_data(bl_idx, *p);
+	// 	write_data(read_idx, tmp_b);
+	// }
+	// else if (in_bounds(x + 1, y + 1) && ((is_empty(x + 1, y + 1) || (*m_particles)[br_idx].id == mat_id_water))) {
+	// 	p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
+	// 	p->velocity.y += (m_gravity * m_deltaTime);
+	// 	Particle tmp_b = get_particle_at(x + 1, y + 1);
+	// 	write_data(br_idx, *p);
+	// 	write_data(read_idx, tmp_b);
+	// }
+	// else if (is_in_liquid(x, y, &lx, &ly) && Utilities::random_val(0, 10) == 0) {
+	// 	Particle tmp_b = get_particle_at(lx, ly);
+	// 	write_data(compute_idx(lx, ly), *p);
+	// 	write_data(read_idx, tmp_b);
+	// }
 }
 
 void ParticleSimulator::update_water(uint32_t x, uint32_t y)
