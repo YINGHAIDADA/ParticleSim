@@ -103,6 +103,13 @@ message(NOTICE "✅ SDL3 loaded")
 # ----------------------------------------
 # 配置 Vulkan (macOS 使用 MoltenVK)
 # ----------------------------------------
+# 查找 Vulkan SDK
+if(NOT DEFINED ENV{VULKAN_SDK})
+    message(FATAL_ERROR "VULKAN_SDK environment variable not set!")
+else()
+    set(VULKAN_SDK $ENV{VULKAN_SDK})
+endif()
+
 if(APPLE)
     # macOS 上使用 MoltenVK
     set(MOLTENVK_PATHS
@@ -162,13 +169,6 @@ if(APPLE)
     # set(LIB_VULKAN "/Users/yinghai/develepment/VulkanSDK/1.3.296.0/macOS/lib/libvulkan.dylib")
     find_package(Vulkan REQUIRED)
 
-    # 查找 Vulkan SDK
-    if(NOT DEFINED ENV{VULKAN_SDK})
-        message(FATAL_ERROR "VULKAN_SDK environment variable not set!")
-    else()
-        set(VULKAN_SDK $ENV{VULKAN_SDK})
-    endif()
-
     # 创建 Vulkan 目标
     # add_library(Vulkan::Vulkan INTERFACE IMPORTED)
     # target_include_directories(Vulkan::Vulkan INTERFACE
@@ -194,6 +194,13 @@ if(APPLE)
     # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework Metal -framework MetalKit -framework QuartzCore")
 else()
     # 其他平台使用标准 Vulkan
+    if(NOT DEFINED VULKAN_SDK_PATH)
+        
+        if(DEFINED ENV{VULKAN_SDK})
+            set(VULKAN_SDK_PATH "$ENV{VULKAN_SDK}")
+            message(STATUS "Using VULKAN_SDK environment variable: ${VULKAN_SDK_PATH}")
+        endif()
+    endif()
     find_package(Vulkan REQUIRED)
 endif()
     message(STATUS "Vulkan IncludeDIR found: ${Vulkan_INCLUDE_DIRS}")
