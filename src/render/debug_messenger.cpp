@@ -25,7 +25,7 @@ void Render::createDebugMessenger() {
 	m_Dispatcher.init(m_Instance, vkGetInstanceProcAddr);
 
     vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo {};
-	debugMessengerCreateInfo.pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(debugCallback);
+	debugMessengerCreateInfo.pfnUserCallback = debugCallback;
 	debugMessengerCreateInfo.messageSeverity =
 		vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
 		vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |

@@ -1,8 +1,8 @@
 #pragma once
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_NODISCARD_WARNINGS
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
+// VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <SDL3/SDL_vulkan.h>
 #include <optional>
 #include <sstream>
@@ -92,7 +92,7 @@ class Render {
 
     private:
         bool m_DebugLayer = false;
-        vk::DispatchLoaderDynamic m_Dispatcher;
+        vk::detail::DispatchLoaderDynamic m_Dispatcher;
         vk::DebugUtilsMessengerEXT m_DebugMessenger;
 
         SDL_Window* m_Window;

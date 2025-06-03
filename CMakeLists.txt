@@ -4,6 +4,17 @@ project(ParticleSim VERSION 0.0.1)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 
+if(APPLE)
+    set(CMAKE_C_COMPILER "/opt/homebrew/opt/llvm/bin/clang")
+    set(CMAKE_CXX_COMPILER "/opt/homebrew/opt/llvm/bin/clang++")
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-autolink")
+else()
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
@@ -95,8 +106,9 @@ message(NOTICE "✅ SDL3 loaded")
 if(APPLE)
     # macOS 上使用 MoltenVK
     set(MOLTENVK_PATHS
+        /Users/yinghai/VulkanSDK/1.4.313.1/macOS
         # /usr/local        # Homebrew 默认安装路径
-        /opt/homebrew     # Apple Silicon Homebrew 路径
+        #/opt/homebrew     # Apple Silicon Homebrew 路径
         # ${CMAKE_BINARY_DIR}/_deps # 如果通过 CMake 下载
         # ${CMAKE_CURRENT_SOURCE_DIR}/third_party # 本地副本
     )
@@ -105,6 +117,7 @@ if(APPLE)
     find_path(MoltenVK_INCLUDE_DIR
         NAMES MoltenVK/mvk_vulkan.h
         PATHS ${MOLTENVK_PATHS}
+        NO_DEFAULT_PATH
         PATH_SUFFIXES include
         DOC "MoltenVK include directory"
     )
@@ -113,6 +126,7 @@ if(APPLE)
     find_library(MoltenVK_LIBRARY
         NAMES MoltenVK
         PATHS ${MOLTENVK_PATHS}
+        NO_DEFAULT_PATH
         PATH_SUFFIXES lib
         DOC "MoltenVK library"
     )
@@ -121,6 +135,7 @@ if(APPLE)
     find_library(VULKAN_FRAMEWORK
         NAMES vulkan
         PATHS ${MOLTENVK_PATHS}
+        NO_DEFAULT_PATH
         PATH_SUFFIXES lib
         DOC "Vulkan framework"
     )
@@ -142,42 +157,54 @@ if(APPLE)
     message(STATUS "✅ Found MoltenVK library at: ${MoltenVK_LIBRARY}")
     message(STATUS "✅ Found Vulkan framework at: ${VULKAN_FRAMEWORK}")
 
-    
+    # include_directories(/Users/yinghai/develepment/VulkanSDK/1.3.296.0/macOS/include/)
+    # link_directories(/Users/yinghai/develepment/VulkanSDK/1.3.296.0/macOS/lib)
+    # set(LIB_VULKAN "/Users/yinghai/develepment/VulkanSDK/1.3.296.0/macOS/lib/libvulkan.dylib")
+    find_package(Vulkan REQUIRED)
+
+    # 查找 Vulkan SDK
+    if(NOT DEFINED ENV{VULKAN_SDK})
+        message(FATAL_ERROR "VULKAN_SDK environment variable not set!")
+    else()
+        set(VULKAN_SDK $ENV{VULKAN_SDK})
+    endif()
+
     # 创建 Vulkan 目标
-    add_library(Vulkan::Vulkan INTERFACE IMPORTED)
-    target_include_directories(Vulkan::Vulkan INTERFACE
-        ${MoltenVK_INCLUDE_DIR}
-        ${MoltenVK_INCLUDE_DIR}/MoltenVK
-    )
-    target_link_libraries(Vulkan::Vulkan INTERFACE
-        ${MoltenVK_LIBRARY}
-        # ${VULKAN_FRAMEWORK}
-        # ${METAL_LIBRARY}
-        # ${QUARTZCORE_LIBRARY}
-        # ${COREFOUNDATION_LIBRARY}
-    )
+    # add_library(Vulkan::Vulkan INTERFACE IMPORTED)
+    # target_include_directories(Vulkan::Vulkan INTERFACE
+    #     ${MoltenVK_INCLUDE_DIR}
+    #     ${MoltenVK_INCLUDE_DIR}/MoltenVK
+    # )
+    # target_link_libraries(Vulkan::Vulkan INTERFACE
+    #     ${MoltenVK_LIBRARY}
+    #     # ${VULKAN_FRAMEWORK}
+    #     # ${METAL_LIBRARY}
+    #     # ${QUARTZCORE_LIBRARY}
+    #     # ${COREFOUNDATION_LIBRARY}
+    # )
     
     
-    # 添加必要的编译定义
-    target_compile_definitions(Vulkan::Vulkan INTERFACE
-        VK_USE_PLATFORM_MACOS_MVK
-        VK_NO_PROTOTYPES
-    )
+    # # 添加必要的编译定义
+    # target_compile_definitions(Vulkan::Vulkan INTERFACE
+    #     VK_USE_PLATFORM_MACOS_MVK
+    #     VK_NO_PROTOTYPES
+    # )
 
     # 添加 macOS 特定的链接选项
     # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework Metal -framework MetalKit -framework QuartzCore")
 else()
     # 其他平台使用标准 Vulkan
     find_package(Vulkan REQUIRED)
-    message(STATUS "Vulkan found: ${Vulkan_INCLUDE_DIRS}")
-    message(STATUS "Vulkan found: ${Vulkan_LIBRARY}")
-    message(STATUS "Vulkan found: ${Vulkan_FOUND}")
 endif()
+    message(STATUS "Vulkan IncludeDIR found: ${Vulkan_INCLUDE_DIRS}")
+    message(STATUS "Vulkan Library found: ${Vulkan_LIBRARY}")
+    message(STATUS "Vulkan found: ${Vulkan_FOUND}")
 
 # ----------------------------------------
 # 创建可执行文件
 # ----------------------------------------
 file(GLOB_RECURSE PROJECT_RENDER_SOURCE_FILES "src/render/*.cpp")
+file(GLOB_RECURSE PROJECT_RENDER_HEADER_FILES "src/render/*.h")
 file(GLOB_RECURSE PROJECT_HEADER_DIRS "src/*.h")
 
 add_executable(${PROJECT_NAME} 
@@ -198,12 +225,35 @@ message(STATUS "🔷 include directories: ${INCLUDE_DIRS}")
 # 添加头文件包含路径
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${INCLUDE_DIRS}
+    ${Vulkan_INCLUDE_DIRS}
     third_party/stb
 )
 
+if(APPLE)
+
+    target_link_directories(ParticleSim PRIVATE
+        ${VULKAN_SDK}/macOS/lib
+    )
+    target_link_directories(ParticleSim PRIVATE
+        ${VULKAN_SDK}/macOS/Frameworks
+    )
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            # ${Vulkan_LIBRARY}
+            # "-framework vulkan"
+            Vulkan::Vulkan
+            "-framework Metal"
+            "-framework MetalKit"
+            "-framework QuartzCore"
+            "-framework Cocoa"
+        )
+elseif(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            ${Vulkan_LIBRARY}
+        )
+endif()
+
 # 链接库文件
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    Vulkan::Vulkan           # Vulkan 库
     SDL3::SDL3-static        # SDL3 库
     glm                      # glm 库
     spdlog                   # spdlog 库
@@ -212,10 +262,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # macOS 需要链接的系统框架
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
-        ${COCOA_LIBRARY}
-        ${METAL_LIBRARY}
-        ${METALKIT_LIBRARY}
-        ${QUARTZCORE_LIBRARY}
         ${COREFOUNDATION_LIBRARY}
         ${IOKIT_LIBRARY}
         ${COREGRAPHICS_LIBRARY}
@@ -238,8 +284,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     PROJECT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     PROJECT_VERSION_PATCH=${PROJECT_VERSION_PATCH}
     PROJECT_VK_VERSION_MAJOR=1
-    PROJECT_VK_VERSION_MINOR=3
-    PROJECT_VK_VERSION_PATCH=268
+    PROJECT_VK_VERSION_MINOR=4
+    PROJECT_VK_VERSION_PATCH=313
 
     $<$<CONFIG:Debug>:DEBUG_BUILD>
     $<$<NOT:$<CONFIG:Debug>>:RELEASE_BUILD>

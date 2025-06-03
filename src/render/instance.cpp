@@ -88,7 +88,14 @@ void Render::createInstance() {
     if (!requiredLayersSupported) throw std::runtime_error("Not all required layers are supported");
     if (!requiredExtensionsSupported) throw std::runtime_error("Not all required extensions are supported");
 
+    // 必须设置 portability 标志
+    vk::InstanceCreateFlags flags = {};
+    #if defined(__APPLE__)
+    flags = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+    #endif
+
     vk::InstanceCreateInfo instanceCreateInfo {};
+    instanceCreateInfo.flags = flags;
     instanceCreateInfo.pApplicationInfo = &appInfo;
     instanceCreateInfo.enabledLayerCount = CONTAINER_COUNT(requiredLayers);
     instanceCreateInfo.ppEnabledLayerNames = requiredLayers.data();
