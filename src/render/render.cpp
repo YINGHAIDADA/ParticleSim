@@ -5,7 +5,9 @@
 #include <stb_truetype.h>
 
 Render::Render(SDL_Window* window) { m_Window = window; }
-Render::~Render() {}
+Render::~Render() {
+    // cleanResources();
+}
 
 void Render::init(vk::Extent2D& windowSize) {
     try {
@@ -18,9 +20,9 @@ void Render::init(vk::Extent2D& windowSize) {
         Render::selectQueueFamilyIndexes();
         Render::createLogicalDevice();
         Render::createShaderModules();
-        Render::createSyncObjects();
         Render::createSwapchain(windowSize);
         Render::selectSwapchainResources();
+        Render::createSyncObjects();
         Render::createCommandPool();
         Render::createCommandBuffers();
         Render::createRenderPass();
@@ -49,13 +51,24 @@ void Render::resize(vk::Extent2D& newWindowSize) {
 }
 
 void Render::draw(vk::Extent2D& windowSize) {
-	uint32_t imageIndex = m_LogicalDevice.acquireNextImageKHR(
-		m_Swapchain,
+    m_LogicalDevice.waitForFences(
+        1,
+        &m_InFlightFences[m_CurrentFrame],
+        vk::True,
+        UINT64_MAX
+    );
+    m_LogicalDevice.resetFences(1,&m_InFlightFences[m_CurrentFrame]);
+    
+    vk::ResultValue<uint32_t> acquireResult = m_LogicalDevice.acquireNextImageKHR(
+        m_Swapchain,
 		UINT64_MAX,
-		m_ImageAvailableSemaphore,
+		m_ImageAvailableSemaphores[m_CurrentFrame],
 		nullptr
-	).value;
-	
+	);
+    
+    uint32_t imageIndex = acquireResult.value;
+    
+
 	vk::CommandBuffer commandBuffer = m_CommandBuffers[imageIndex];
 	vk::Image image = m_SwapchainImages[imageIndex];
 
@@ -92,7 +105,6 @@ void Render::draw(vk::Extent2D& windowSize) {
 	commandBuffer.endRenderPass();
 	commandBuffer.end();
 
-	m_LogicalDevice.resetFences(m_RenderFinishedFence);
 
 	vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
 
@@ -100,35 +112,42 @@ void Render::draw(vk::Extent2D& windowSize) {
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &m_SubmitSemaphore;
+	submitInfo.pSignalSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
 	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &m_ImageAvailableSemaphore;
+	submitInfo.pWaitSemaphores = &m_ImageAvailableSemaphores[m_CurrentFrame];
 	submitInfo.pWaitDstStageMask = &waitStage;
-	m_GraphicQueue.submit(submitInfo, m_RenderFinishedFence);
+	m_GraphicQueue.submit(submitInfo, m_InFlightFences[m_CurrentFrame]);
 
 	vk::PresentInfoKHR presentInfo {};
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &m_Swapchain;
 	presentInfo.pImageIndices = &imageIndex;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &m_SubmitSemaphore;
+	presentInfo.pWaitSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
+
 	m_GraphicQueue.presentKHR(presentInfo);
 
-	m_LogicalDevice.waitForFences(
-		1,
-		&m_RenderFinishedFence,
-		vk::True,
-		UINT32_MAX
-	);
+
+	// 更新帧索引
+    m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void Render::draw_custom(vk::Extent2D& windowSize) {
+
+    m_LogicalDevice.waitForFences(
+		1,
+		&m_InFlightFences[m_CurrentFrame],
+		vk::True,
+		UINT32_MAX
+	);
+
+    m_LogicalDevice.resetFences(1,&m_InFlightFences[m_CurrentFrame]);
 	// Placeholder for custom rendering logic
 	uint32_t imageIndex;
     vk::Result result = m_LogicalDevice.acquireNextImageKHR(
 		m_Swapchain,
 		UINT64_MAX,
-		m_ImageAvailableSemaphore,
+		m_ImageAvailableSemaphores[m_CurrentFrame],
 		nullptr,
 		&imageIndex
 	);
@@ -284,9 +303,6 @@ void Render::draw_custom(vk::Extent2D& windowSize) {
     // 结束命令缓冲区
     cmd.end();
 
-    // 提交命令缓冲区
-    m_LogicalDevice.resetFences(m_RenderFinishedFence);
-
     vk::SubmitInfo submitInfo;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
@@ -294,27 +310,25 @@ void Render::draw_custom(vk::Extent2D& windowSize) {
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &m_ImageAvailableSemaphore;
+    submitInfo.pWaitSemaphores = &m_ImageAvailableSemaphores[m_CurrentFrame];
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &m_SubmitSemaphore;
+    submitInfo.pSignalSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
     
-    m_GraphicQueue.submit(1, &submitInfo, m_RenderFinishedFence);
+    m_GraphicQueue.submit(1, &submitInfo, m_InFlightFences[m_CurrentFrame]);
 
     // 呈现
     vk::PresentInfoKHR presentInfo;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &m_SubmitSemaphore;
+    presentInfo.pWaitSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &m_Swapchain;
     presentInfo.pImageIndices = &imageIndex;
+
     m_GraphicQueue.presentKHR(presentInfo);
 
-	m_LogicalDevice.waitForFences(
-		1,
-		&m_RenderFinishedFence,
-		vk::True,
-		UINT32_MAX
-	);
+    // 更新帧索引
+    m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
 }
 
 void Render::draw_ui(vk::Extent2D &windowSize)
@@ -696,6 +710,20 @@ void Render::initResources() {
     //createPostEffectPasses();
     // 加载UI字体
     construct_font_data();
+}
+
+void Render::cleanResources()
+{
+    // 销毁描述符集
+    m_LogicalDevice.destroyDescriptorSetLayout(m_descriptor_set_layout);
+    m_LogicalDevice.destroyDescriptorPool(m_descriptor_pool);
+
+    // 销毁信号量和栅栏
+    for (int i = 0; i < m_SwapchainImageCount; i++) {
+        m_LogicalDevice.destroySemaphore(m_ImageAvailableSemaphores[i]);
+        m_LogicalDevice.destroySemaphore(m_RenderFinishedSemaphores[i]);
+        m_LogicalDevice.destroyFence(m_InFlightFences[i]);
+    }
 }
 
 void Render::construct_font_data() {

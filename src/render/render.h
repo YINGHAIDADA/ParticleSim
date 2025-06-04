@@ -107,6 +107,7 @@ class Render {
 
         std::vector<vk::Image> m_SwapchainImages;
         std::vector<vk::ImageView> m_SwapchainImagesViews;
+        size_t m_SwapchainImageCount = 0;
         std::vector<vk::CommandBuffer> m_CommandBuffers;
         std::vector<vk::Framebuffer> m_FrameBuffers;
         vk::Extent2D m_SwapchainExtent;
@@ -144,6 +145,7 @@ class Render {
         void createUIPipeline();
 
         void initResources();
+        void cleanResources();
         vk::CommandBuffer beginSingleTimeCommands();
         void endSingleTimeCommands(vk::CommandBuffer &commandBuffer);
         void createTexture(Texture& tex, uint32_t width, uint32_t height, 
@@ -160,9 +162,17 @@ class Render {
         void transitionImageLayout(vk::CommandBuffer cmd, vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
         uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
-        vk::Semaphore m_ImageAvailableSemaphore;
-        vk::Semaphore m_SubmitSemaphore;
-        vk::Fence m_RenderFinishedFence;
+        std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
+        std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
+
+        std::vector<vk::Fence> m_InFlightFences;
+        std::vector<vk::Fence> m_ImageInFlight;
+
+        // 当前帧索引
+        uint32_t m_CurrentFrame = 0;
+
+        // 最大并发帧数（通常等于交换链图像数量）
+        static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
         // 纹理相关
         uint8_t* g_texture_buffer = nullptr;

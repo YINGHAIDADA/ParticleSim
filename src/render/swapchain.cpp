@@ -73,5 +73,10 @@ void Render::recreateSwapchain(vk::Extent2D& newSize) {
     
     // 创建新交换链
     createSwapchain(newSize);
+    selectSwapchainResources();
     createFrameBuffers(newSize);
+
+    // 关键：重置图像栅栏数组
+    m_ImageInFlight.clear();
+    m_ImageInFlight.resize(m_SwapchainImages.size(), vk::Fence());
 }

@@ -34,5 +34,9 @@ void Render::selectSwapchainResources() {
     }
 
     m_SwapchainImagesViews = swapchainImagesViews;
-    SPDLOG_INFO("Swapchain Resources selected successfully");
+
+    m_SwapchainImageCount = m_SwapchainImages.size();
+
+    SPDLOG_INFO("Swapchain Resources selected successfully,size: {}",
+                m_SwapchainImageCount);
 }
