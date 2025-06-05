@@ -188,19 +188,22 @@ private:
     }
 };
 void setup_logger() {
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs.txt", true);
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs.log", true);
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     
     auto formatter = std::make_unique<spdlog::pattern_formatter>();
     formatter->add_flag<SourceLocationFormatter>('@').set_pattern("[%Y-%m-%d %T.%e] [%^%l%$] %@ %v");
     
-    console_sink->set_formatter(std::move(formatter));
-    
-    auto logger = std::make_shared<spdlog::logger>("location_logger", console_sink);
+    console_sink->set_formatter(formatter->clone());
+    file_sink->set_formatter(std::move(formatter));
+
+    std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
+    auto logger = std::make_shared<spdlog::logger>("location_logger", sinks.begin(), sinks.end());
     logger->set_level(spdlog::level::trace);
+    logger->flush_on(spdlog::level::info);
     
     spdlog::set_default_logger(logger);
-    spdlog::flush_on(spdlog::level::info);
+    // spdlog::flush_every(std::chrono::seconds(1));
     
     // 测试日志
     SPDLOG_INFO("Logger initialized with location support");

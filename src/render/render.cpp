@@ -51,6 +51,7 @@ void Render::resize(vk::Extent2D& newWindowSize) {
 }
 
 void Render::draw(vk::Extent2D& windowSize) {
+
     m_LogicalDevice.waitForFences(
         1,
         &m_InFlightFences[m_CurrentFrame],
@@ -111,11 +112,11 @@ void Render::draw(vk::Extent2D& windowSize) {
 	vk::SubmitInfo submitInfo {};
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
+	submitInfo.pWaitDstStageMask = &waitStage;
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &m_ImageAvailableSemaphores[m_CurrentFrame];
-	submitInfo.pWaitDstStageMask = &waitStage;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
 	m_GraphicQueue.submit(submitInfo, m_InFlightFences[m_CurrentFrame]);
 
 	vk::PresentInfoKHR presentInfo {};
@@ -125,7 +126,7 @@ void Render::draw(vk::Extent2D& windowSize) {
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame];
 
-	m_GraphicQueue.presentKHR(presentInfo);
+	m_PresentQueue.presentKHR(presentInfo);
 
 
 	// 更新帧索引
