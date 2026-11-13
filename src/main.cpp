@@ -219,6 +219,7 @@ private:
                 break;
             }
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                m_Simulation->cancelIntro();
                 setMouse(event.button.x, event.button.y);
                 if (const std::optional<Material> picked = hudMaterialAt(m_MouseX, m_MouseY)) {
                     m_Simulation->setMaterial(*picked);

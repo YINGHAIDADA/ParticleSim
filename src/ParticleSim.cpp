@@ -1,5 +1,7 @@
 #include "ParticleSim.h"
 
+#include "Hud.h"
+
 #include <algorithm>
 #include <iterator>
 #include <stdexcept>
@@ -166,9 +168,11 @@ void ParticleSimulator::setBrushRadius(int radius) {
 
 void ParticleSimulator::update(float deltaTime) {
     if (!m_running) return;
+    if (m_intro) m_introTime += deltaTime;
     m_time += deltaTime;
     constexpr float kStep = 1.f / 60.f;
     if (m_time < kStep) return;
+    playIntro();
     step();
     m_time = std::min(m_time - kStep, kStep);
 }
@@ -191,6 +195,7 @@ void ParticleSimulator::materialRgb(Material material, uint8_t& r, uint8_t& g, u
 }
 
 void ParticleSimulator::clear() {
+    m_intro = false;
     m_cells.assign(m_cells.size(), {});
     publish();
 }
@@ -201,10 +206,132 @@ void ParticleSimulator::seed() {
             setCell(x, y, Material::Stone);
         }
     }
-    fill(m_width / 3, m_height / 3, 34, Material::Sand);
-    fill(m_width / 2, m_height / 2 + 24, 30, Material::Water);
-    fill(m_width * 2 / 3, m_height / 3, 16, Material::Oil);
+
+    constexpr const char* kTitle = "particleSim";
+    constexpr int kGap = 2;
+    int scale = 6;
+    auto titleWidth = [](int glyphScale) {
+        constexpr int kLetters = 11;
+        return kLetters * (5 * glyphScale + kGap) - kGap;
+    };
+    while (scale > 2 && titleWidth(scale) + hudWidth() + 48 > m_width) --scale;
+
+    const int textWidth = titleWidth(scale);
+    const int textHeight = 7 * scale;
+    int cursorX = std::max(hudWidth() + 6, (m_width - textWidth) / 2);
+    int originY = std::max(8, m_height / 7);
+    const int floorTop = m_height - 5;
+    if (originY + textHeight > floorTop - 48) originY = std::max(4, floorTop - 48 - textHeight);
+
+    m_letterCount = 0;
+    for (int i = 0; kTitle[i] != '\0' && m_letterCount < 16; ++i) {
+        const uint8_t* rows = hudGlyphRows(kTitle[i]);
+        IntroLetter& letter = m_letters[m_letterCount];
+        letter = {cursorX, originY, 5 * scale, textHeight};
+        if (rows != nullptr) {
+            for (int row = 0; row < 7; ++row) {
+                for (int col = 0; col < 5; ++col) {
+                    if ((rows[row] & (0x10 >> col)) == 0) continue;
+                    for (int sy = 0; sy < scale; ++sy) {
+                        for (int sx = 0; sx < scale; ++sx) {
+                            const int px = cursorX + col * scale + sx;
+                            const int py = originY + row * scale + sy;
+                            if (inBounds(px, py)) setCell(px, py, Material::Wood);
+                        }
+                    }
+                }
+            }
+            ++m_letterCount;
+        }
+        cursorX += 5 * scale + kGap;
+    }
+
+    const int center = m_width / 2;
+    const int basinHalf = std::max(34, scale * 7);
+    const int wallThickness = 4;
+    const int basinLeft = center - basinHalf;
+    const int basinRight = center + basinHalf;
+    const int wallTop = floorTop - std::max(44, scale * 8);
+    for (int y = wallTop; y < floorTop; ++y) {
+        for (int thickness = 0; thickness < wallThickness; ++thickness) {
+            const int left = basinLeft - 1 - thickness;
+            const int right = basinRight + 1 + thickness;
+            if (inBounds(left, y)) setCell(left, y, Material::Stone);
+            if (inBounds(right, y)) setCell(right, y, Material::Stone);
+        }
+    }
+
+    const int waterHalf = std::max(16, basinHalf / 2);
+    const int waterTop = originY + textHeight + 14;
+    int waterBottom = waterTop + std::max(36, scale * 7);
+    if (waterBottom > wallTop - 28) waterBottom = std::max(waterTop, wallTop - 28);
+    for (int y = waterTop; y <= waterBottom; ++y) {
+        for (int x = center - waterHalf; x <= center + waterHalf; ++x) {
+            if (inBounds(x, y)) setCell(x, y, Material::Water);
+        }
+    }
+    m_lavaX = center;
+    m_lavaY = std::min(originY + textHeight + 6, waterTop - 4);
+
+    const int powderRadius = std::clamp(scale + 1, 4, 7);
+    int powderX = cursorX + powderRadius + 4;
+    int powderY = originY + textHeight / 2;
+    if (powderX + powderRadius >= m_width - 2) {
+        powderX = m_width - powderRadius - 2;
+    }
+    if (powderY > waterTop - powderRadius) powderY = std::max(2, waterTop - powderRadius - 1);
+    fill(powderX, powderY, powderRadius, Material::Gunpowder);
+    m_fuseX = powderX - powderRadius - 1;
+    m_fuseY = powderY;
+    if (!inBounds(m_fuseX, m_fuseY)) {
+        m_fuseX = -1;
+        m_fuseY = -1;
+    }
+
     publish();
+}
+
+void ParticleSimulator::igniteLetter(const IntroLetter& letter) {
+    for (int y = letter.y; y < letter.y + letter.h; ++y) {
+        for (int x = letter.x; x < letter.x + letter.w; ++x) {
+            if (!inBounds(x, y)) continue;
+            if (m_cells[index(x, y)].id == Material::Wood) setCell(x, y, Material::Fire);
+        }
+    }
+}
+
+void ParticleSimulator::playIntro() {
+    if (!m_intro) return;
+
+    constexpr float kLetterStart = 0.45f;
+    constexpr float kLetterStep = 0.28f;
+    if (m_lettersLit < m_letterCount &&
+        m_introTime + 0.16f >= kLetterStart + float(m_lettersLit) * kLetterStep) {
+        const IntroLetter& letter = m_letters[m_lettersLit];
+        for (int y = letter.y; y < letter.y + letter.h; ++y) {
+            for (int x = letter.x; x < letter.x + letter.w; ++x) {
+                if (!inBounds(x, y)) continue;
+                Cell& cell = m_cells[index(x, y)];
+                if (cell.id == Material::Wood && cell.life < 12) cell.life = 12;
+            }
+        }
+    }
+    while (m_lettersLit < m_letterCount &&
+           m_introTime >= kLetterStart + float(m_lettersLit) * kLetterStep) {
+        igniteLetter(m_letters[m_lettersLit]);
+        ++m_lettersLit;
+    }
+
+    if (m_introTime >= 2.25f && m_introTime <= 3.25f && (m_frame & 1u) == 0) {
+        fill(m_lavaX, m_lavaY, 2, Material::Lava);
+    }
+
+    if (!m_fuseLit && m_introTime >= 3.7f && m_fuseX >= 0) {
+        setCell(m_fuseX, m_fuseY, Material::Fire);
+        m_fuseLit = true;
+    }
+
+    if (m_introTime >= 5.4f) m_intro = false;
 }
 
 void ParticleSimulator::step() {
@@ -626,7 +753,7 @@ void ParticleSimulator::moveLava(int x, int y) {
 }
 
 void ParticleSimulator::moveLiquid(int x, int y) {
-    if (drop(x, y, 2)) return;
+    if (drop(x, y, 3)) return;
     if (trySwap(x, y, x, y + 1)) return;
     const int direction = (rnd() & 1u) ? 1 : -1;
     if (trySwap(x, y, x + direction, y + 1)) return;

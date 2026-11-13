@@ -117,6 +117,8 @@ void drawText(uint8_t* pixels, int width, int height, int x, int y, const char* 
 
 }  // namespace
 
+const uint8_t* hudGlyphRows(char letter) { return glyphRows(letter); }
+
 int hudWidth() { return kPanelWidth; }
 
 std::optional<Material> hudMaterialAt(int x, int y) {

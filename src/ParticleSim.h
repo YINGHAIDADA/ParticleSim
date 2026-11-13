@@ -40,6 +40,7 @@ public:
     Material material() const { return m_material; }
     void setRunning(bool running) { m_running = running; }
     bool running() const { return m_running; }
+    void cancelIntro() { m_intro = false; }
     void setBrushRadius(int radius);
     int brushRadius() const { return m_brush; }
 
@@ -56,8 +57,17 @@ private:
         uint8_t updated = 0;
     };
 
+    struct IntroLetter {
+        int x = 0;
+        int y = 0;
+        int w = 0;
+        int h = 0;
+    };
+
     void seed();
     void step();
+    void playIntro();
+    void igniteLetter(const IntroLetter& letter);
     void fill(int cx, int cy, int radius, Material material);
     void setCell(int x, int y, Material material);
     void updateCell(int x, int y);
@@ -88,6 +98,16 @@ private:
     uint32_t m_rng = 0xA341316Cu;
     float m_time = 0.f;
     bool m_running = true;
+    bool m_intro = true;
+    bool m_fuseLit = false;
+    float m_introTime = 0.f;
+    int m_lettersLit = 0;
+    int m_letterCount = 0;
+    int m_lavaX = 0;
+    int m_lavaY = 0;
+    int m_fuseX = -1;
+    int m_fuseY = -1;
+    IntroLetter m_letters[16]{};
     Material m_material = Material::Sand;
     std::vector<Cell> m_cells;
     std::vector<uint8_t> m_pixels;
