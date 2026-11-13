@@ -35,6 +35,7 @@ std::optional<Material> materialFromKey(SDL_Keycode key) {
     case SDLK_8: return Material::Lava;
     case SDLK_9: return Material::Acid;
     case SDLK_0: return Material::Stone;
+    case SDLK_P: return Material::Plant;
     default: return std::nullopt;
     }
 }
@@ -76,7 +77,7 @@ public:
         );
 
         SPDLOG_INFO(
-            "左键绘制，右键擦除，1-0 切换材料，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
+            "左键绘制，右键擦除，1-0 切换材料，P 植物，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
         );
         refreshTitle(0.f, true);
     }

@@ -19,6 +19,7 @@ enum class Material : uint8_t {
     Lava,
     Stone,
     Acid,
+    Plant,
     Count
 };
 
@@ -85,6 +86,9 @@ private:
     void moveGas(int x, int y);
     void spawn(int x, int y, Material material, uint8_t life);
     void explode(int cx, int cy);
+    bool rooted(int x, int y) const;
+    bool drinkWater(int x, int y);
+    bool sproutAbove(int x, int y, bool branch);
     void become(Cell& cell, Material material, uint8_t life);
     bool neighborAt(int x, int y, int direction, int& nx, int& ny) const;
     bool inBounds(int x, int y) const;

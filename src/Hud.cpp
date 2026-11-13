@@ -15,6 +15,7 @@ constexpr Material kPalette[] = {
     Material::Water,
     Material::Salt,
     Material::Wood,
+    Material::Plant,
     Material::Fire,
     Material::Smoke,
     Material::Ember,
