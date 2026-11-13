@@ -510,12 +510,25 @@ bool ParticleSimulator::react(int x, int y) {
         --self.life;
     }
 
+    if (self.id == Material::Steam && self.life <= 24) {
+        for (int i = 0; i < 4; ++i) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, i, nx, ny)) continue;
+            if (m_cells[index(nx, ny)].id != Material::Stone) continue;
+            become(self, Material::Water, 0);
+            return true;
+        }
+    }
+
     if (usesLife(self.id)) {
         if (self.life == 0) {
             if (self.id == Material::Fire) {
                 become(self, Material::Smoke, uint8_t(50 + (rnd() % 50u)));
             } else if (self.id == Material::Ember && (rnd() & 1u) == 0) {
                 become(self, Material::Smoke, uint8_t(30 + (rnd() % 30u)));
+            } else if (self.id == Material::Steam && (rnd() % 3u) == 0) {
+                become(self, Material::Water, 0);
             } else {
                 become(self, Material::Empty, 0);
             }
@@ -587,6 +600,30 @@ bool ParticleSimulator::react(int x, int y) {
                     become(self, Material::Empty, 0);
                     return true;
                 }
+            }
+        }
+    }
+
+    if (self.id == Material::Ember && self.life <= 22) {
+        constexpr int kLandingOrder[] = {2, 0, 1, 3};
+        for (int direction : kLandingOrder) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, direction, nx, ny)) continue;
+            Cell& other = m_cells[index(nx, ny)];
+            if (other.id == Material::Gunpowder) {
+                explode(nx, ny);
+                return true;
+            }
+            if (other.id == Material::Wood) {
+                become(other, Material::Fire, uint8_t(90 + (rnd() % 40u)));
+                spawn(nx, ny - 1, Material::Smoke, uint8_t(30 + (rnd() % 24u)));
+                break;
+            }
+            if (other.id == Material::Oil) {
+                become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
+                spawn(nx, ny - 1, Material::Smoke, uint8_t(46 + (rnd() % 30u)));
+                break;
             }
         }
     }
