@@ -76,7 +76,7 @@ bool dissolves(Material material) {
 uint8_t lifeFor(Material material, uint32_t noise) {
     switch (material) {
     case Material::Fire:
-        return uint8_t(80 + (noise % 70));
+        return uint8_t(130 + (noise % 40));
     case Material::Smoke:
         return uint8_t(100 + (noise % 80));
     case Material::Steam:
@@ -228,23 +228,80 @@ void ParticleSimulator::publish() {
     for (const Cell& cell : m_cells) {
         if (cell.id == Material::Empty || cell.id == Material::Count) {
             out[0] = out[1] = out[2] = out[3] = 0;
-        } else if (cell.id == Material::Fire) {
-            const int heat = std::min(255, 70 + int(cell.life));
-            out[0] = 255;
-            out[1] = uint8_t(std::min(210, heat));
-            out[2] = 20;
-            out[3] = 255;
-        } else {
-            const MaterialInfo& info = infoOf(cell.id);
-            out[0] = uint8_t(vary(info.r, cell.shade, info.jitter));
-            out[1] = uint8_t(vary(info.g, cell.shade, info.jitter));
-            out[2] = uint8_t(vary(info.b, cell.shade, info.jitter));
-            int alpha = info.a;
-            if (cell.id == Material::Smoke || cell.id == Material::Steam) {
-                alpha = std::min(255, 36 + int(cell.life));
-            }
-            out[3] = uint8_t(alpha);
+            out += 4;
+            continue;
         }
+
+        const int flicker = int((cell.shade + m_frame * 13u) & 31u) - 16;
+        const MaterialInfo& info = infoOf(cell.id);
+        int r = vary(info.r, cell.shade, info.jitter);
+        int g = vary(info.g, cell.shade, info.jitter);
+        int b = vary(info.b, cell.shade, info.jitter);
+        int alpha = info.a;
+
+        if (cell.id == Material::Fire) {
+            if (cell.life > 120) {
+                r = 255;
+                g = std::clamp(245 + flicker, 0, 255);
+                b = 48;
+            } else if (cell.life > 80) {
+                r = 255;
+                g = std::clamp(190 + flicker, 0, 255);
+                b = 16;
+            } else if (cell.life > 40) {
+                r = 255;
+                g = std::clamp(100 + flicker, 0, 255);
+                b = 6;
+            } else {
+                r = std::clamp(210 + flicker, 0, 255);
+                g = 36;
+                b = 0;
+            }
+            alpha = 255;
+        } else if (cell.id == Material::Ember) {
+            r = 255;
+            g = std::clamp(70 + int(cell.life) + flicker / 2, 0, 255);
+            b = 8;
+            alpha = 255;
+        } else if (cell.id == Material::Smoke) {
+            r = g = b = std::clamp(22 + int(cell.shade) / 16, 0, 48);
+            alpha = std::clamp(12 + int(cell.life) / 2, 0, 140);
+        } else if (cell.id == Material::Steam) {
+            r = 232;
+            g = 238;
+            b = 255;
+            alpha = std::clamp(30 + int(cell.life), 0, 200);
+        } else if (cell.id == Material::Wood && cell.life > 0) {
+            const int charred = std::min(int(cell.life) * 4, 180);
+            r = std::min(255, r + charred);
+            g = std::max(0, g - charred / 3);
+            b = std::max(0, b - charred / 2);
+        } else if (cell.id == Material::Oil && cell.life > 0) {
+            const int heat = std::min(255, int(cell.life) * 5);
+            r = r + (255 - r) * heat / 255;
+            g = g + (150 - g) * heat / 255;
+            b = b + (16 - b) * heat / 255;
+        } else if (cell.id == Material::Salt && cell.life > 0) {
+            alpha = std::max(40, 255 - int(cell.life) * 40);
+        } else if (cell.id == Material::Water && cell.life > 0) {
+            const int cloud = std::min(int(cell.life), 80);
+            r = r + (210 - r) * cloud / 120;
+            g = g + (216 - g) * cloud / 120;
+            b = b + (220 - b) * cloud / 120;
+        } else if (cell.id == Material::Acid && cell.life > 0) {
+            const int stain = std::min(int(cell.life), 40);
+            r = r + (int(cell.shade) - r) * stain / 80;
+            g = g + (80 - g) * stain / 160;
+        } else if (cell.id == Material::Lava) {
+            g = std::clamp(g + flicker, 20, 120);
+            r = 255;
+            b = 0;
+        }
+
+        out[0] = uint8_t(std::clamp(r, 0, 255));
+        out[1] = uint8_t(std::clamp(g, 0, 255));
+        out[2] = uint8_t(std::clamp(b, 0, 255));
+        out[3] = uint8_t(std::clamp(alpha, 0, 255));
         out += 4;
     }
 }
@@ -282,7 +339,22 @@ void ParticleSimulator::updateCell(int x, int y) {
         moveLava(x, y);
         return;
     }
-    if (cell.id == Material::Ember && (m_frame & 1u) != 0) return;
+    if (cell.id == Material::Fire) {
+        moveFire(x, y);
+        return;
+    }
+    if (cell.id == Material::Ember) {
+        moveEmber(x, y);
+        return;
+    }
+    if (cell.id == Material::Smoke) {
+        moveSmoke(x, y);
+        return;
+    }
+    if (cell.id == Material::Steam) {
+        moveSteam(x, y);
+        return;
+    }
 
     switch (infoOf(cell.id).phase) {
     case Phase::Empty:
@@ -304,14 +376,29 @@ void ParticleSimulator::updateCell(int x, int y) {
 
 bool ParticleSimulator::react(int x, int y) {
     Cell& self = m_cells[index(x, y)];
+    if (self.id == Material::Water && self.life > 0 && (m_frame & 3u) == 0) {
+        --self.life;
+    }
+    if (self.id == Material::Acid && self.life > 0 && (rnd() & 3u) == 0) {
+        --self.life;
+    }
+
     if (usesLife(self.id)) {
         if (self.life == 0) {
-            const bool ember = self.id == Material::Fire || self.id == Material::Ember;
-            const bool smoke = ember && (rnd() % 3u) == 0;
-            become(self, smoke ? Material::Smoke : Material::Empty, smoke ? uint8_t(80 + (rnd() % 60u)) : 0);
+            if (self.id == Material::Fire) {
+                become(self, Material::Smoke, uint8_t(50 + (rnd() % 50u)));
+            } else if (self.id == Material::Ember && (rnd() & 1u) == 0) {
+                become(self, Material::Smoke, uint8_t(30 + (rnd() % 30u)));
+            } else {
+                become(self, Material::Empty, 0);
+            }
             return true;
         }
         --self.life;
+        if (self.id == Material::Fire && self.life < 20 && (rnd() % 5u) == 0) {
+            become(self, Material::Ember, uint8_t(24 + (rnd() % 20u)));
+            return true;
+        }
     }
 
     if (self.id == Material::Water) {
@@ -321,13 +408,22 @@ bool ParticleSimulator::react(int x, int y) {
             if (!neighborAt(x, y, i, nx, ny)) continue;
             Cell& other = m_cells[index(nx, ny)];
             if (other.id == Material::Lava) {
-                become(self, Material::Steam, uint8_t(60 + (rnd() % 50u)));
+                become(self, Material::Steam, uint8_t(100 + (rnd() % 40u)));
+                spawn(x, y - 1, Material::Steam, uint8_t(80 + (rnd() % 30u)));
+                spawn(x - 1, y - 1, Material::Steam, uint8_t(60 + (rnd() % 30u)));
+                spawn(x + 1, y - 1, Material::Steam, uint8_t(60 + (rnd() % 30u)));
+                spawn(x, y - 2, Material::Steam, uint8_t(40 + (rnd() % 20u)));
                 become(other, Material::Stone, 0);
+                spawn(nx - 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
+                spawn(nx + 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
                 return true;
             }
             if (other.id == Material::Fire) {
-                become(self, Material::Steam, uint8_t(40 + (rnd() % 40u)));
-                become(other, Material::Smoke, uint8_t(40 + (rnd() % 40u)));
+                become(self, Material::Steam, uint8_t(80 + (rnd() % 40u)));
+                spawn(x, y - 1, Material::Steam, uint8_t(50 + (rnd() % 30u)));
+                spawn(x + ((rnd() & 1u) ? 1 : -1), y - 1, Material::Steam, uint8_t(40 + (rnd() % 20u)));
+                become(other, Material::Ember, uint8_t(28 + (rnd() % 16u)));
+                spawn(nx, ny - 1, Material::Ember, uint8_t(18 + (rnd() % 12u)));
                 return true;
             }
         }
@@ -338,7 +434,12 @@ bool ParticleSimulator::react(int x, int y) {
             int nx = 0;
             int ny = 0;
             if (!neighborAt(x, y, i, nx, ny)) continue;
-            if (m_cells[index(nx, ny)].id == Material::Water && (rnd() % 12u) == 0) {
+            Cell& water = m_cells[index(nx, ny)];
+            if (water.id != Material::Water || (rnd() % 10u) != 0) continue;
+            self.life = uint8_t(std::min(255, int(self.life) + 1));
+            water.life = uint8_t(std::min(80, int(water.life) + 28));
+            if (self.life >= 5) {
+                spawn(x, y - 1, Material::Steam, uint8_t(16 + (rnd() % 10u)));
                 become(self, Material::Empty, 0);
                 return true;
             }
@@ -350,8 +451,11 @@ bool ParticleSimulator::react(int x, int y) {
         int ny = 0;
         if (neighborAt(x, y, int(rnd() % 4u), nx, ny)) {
             Cell& other = m_cells[index(nx, ny)];
-            if (dissolves(other.id) && (rnd() % 4u) == 0) {
-                become(other, Material::Empty, 0);
+            if (dissolves(other.id) && (rnd() % 3u) == 0) {
+                self.shade = infoOf(other.id).r;
+                self.life = 40;
+                become(other, Material::Steam, uint8_t(14 + (rnd() % 12u)));
+                spawn(nx, ny - 1, Material::Steam, uint8_t(10 + (rnd() % 8u)));
                 if ((rnd() % 6u) == 0) {
                     become(self, Material::Empty, 0);
                     return true;
@@ -361,6 +465,7 @@ bool ParticleSimulator::react(int x, int y) {
     }
 
     if (self.id == Material::Fire || self.id == Material::Lava) {
+        const int heat = self.id == Material::Lava ? 4 : 2;
         for (int i = 0; i < 4; ++i) {
             int nx = 0;
             int ny = 0;
@@ -370,10 +475,20 @@ bool ParticleSimulator::react(int x, int y) {
                 explode(nx, ny);
                 return true;
             }
-            if (other.id == Material::Wood && (rnd() % 36u) == 0) {
-                become(other, Material::Fire, uint8_t(50 + (rnd() % 40u)));
-            } else if (other.id == Material::Oil && (rnd() % 5u) == 0) {
-                become(other, Material::Fire, uint8_t(30 + (rnd() % 30u)));
+            if (other.id == Material::Wood) {
+                other.life = uint8_t(std::min(255, int(other.life) + heat));
+                if (other.life >= 16 && (rnd() & 1u) == 0) {
+                    become(other, Material::Fire, uint8_t(90 + (rnd() % 40u)));
+                    spawn(nx, ny - 1, Material::Ember, uint8_t(22 + (rnd() % 16u)));
+                    spawn(nx + ((rnd() & 1u) ? 1 : -1), ny - 1, Material::Smoke, uint8_t(40 + (rnd() % 30u)));
+                }
+            } else if (other.id == Material::Oil) {
+                other.life = uint8_t(std::min(255, int(other.life) + heat * 6));
+                if (other.life >= 48) {
+                    become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
+                    spawn(nx, ny - 1, Material::Smoke, uint8_t(70 + (rnd() % 40u)));
+                    spawn(nx, ny - 2, Material::Ember, uint8_t(18 + (rnd() % 14u)));
+                }
             }
         }
     }
@@ -415,6 +530,65 @@ bool ParticleSimulator::slide(int x, int y, int dx, int maxDistance) {
         landed = nx;
     }
     return landed != x && trySwap(x, y, landed, y);
+}
+
+void ParticleSimulator::spawn(int x, int y, Material material, uint8_t life) {
+    if (!inBounds(x, y)) return;
+    Cell& cell = m_cells[index(x, y)];
+    if (cell.id != Material::Empty) return;
+    become(cell, material, life);
+}
+
+void ParticleSimulator::moveFire(int x, int y) {
+    if ((rnd() % 20u) == 0) {
+        const int spark = (rnd() & 1u) ? 1 : -1;
+        spawn(x + spark, y - 1, Material::Ember, uint8_t(16 + (rnd() % 18u)));
+    }
+    if ((rnd() % 3u) != 0 && inBounds(x, y - 2) &&
+        m_cells[index(x, y - 1)].id == Material::Empty &&
+        m_cells[index(x, y - 2)].id == Material::Empty &&
+        trySwap(x, y, x, y - 2)) {
+        return;
+    }
+    if (trySwap(x, y, x, y - 1)) return;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (trySwap(x, y, x + direction, y - 1)) return;
+    if (trySwap(x, y, x - direction, y - 1)) return;
+    if ((rnd() & 3u) == 0) trySwap(x, y, x + direction, y);
+}
+
+void ParticleSimulator::moveEmber(int x, int y) {
+    const bool hot = m_cells[index(x, y)].life > 22;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (hot) {
+        if (trySwap(x, y, x + direction, y - 1)) return;
+        if (trySwap(x, y, x, y - 1)) return;
+    }
+    if ((m_frame & 1u) != 0) return;
+    if (drop(x, y, 2)) return;
+    trySwap(x, y, x + direction, y + 1);
+}
+
+void ParticleSimulator::moveSmoke(int x, int y) {
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if ((rnd() % 3u) != 0 && trySwap(x, y, x + direction, y)) return;
+    if ((m_frame & 1u) == 0 && trySwap(x, y, x, y - 1)) return;
+    if (trySwap(x, y, x + direction, y - 1)) return;
+    trySwap(x, y, x - direction, y - 1);
+}
+
+void ParticleSimulator::moveSteam(int x, int y) {
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (inBounds(x, y - 2) &&
+        m_cells[index(x, y - 1)].id == Material::Empty &&
+        m_cells[index(x, y - 2)].id == Material::Empty &&
+        trySwap(x, y, x, y - 2)) {
+        return;
+    }
+    if (trySwap(x, y, x + direction, y - 1)) return;
+    if (trySwap(x, y, x - direction, y - 1)) return;
+    if (trySwap(x, y, x, y - 1)) return;
+    trySwap(x, y, x + direction, y);
 }
 
 void ParticleSimulator::movePowder(int x, int y) {
@@ -477,13 +651,18 @@ void ParticleSimulator::explode(int cx, int cy) {
             if (!inBounds(x, y)) continue;
             const int dx = x - cx;
             const int dy = y - cy;
-            if (dx * dx + dy * dy > kRadius * kRadius) continue;
+            const int dist2 = dx * dx + dy * dy;
+            if (dist2 > kRadius * kRadius) continue;
             Cell& cell = m_cells[index(x, y)];
             if (cell.id == Material::Stone || cell.id == Material::Lava) continue;
-            if (dx * dx + dy * dy <= 2) {
+            if (dist2 <= 2) {
                 become(cell, Material::Empty, 0);
+            } else if (dist2 <= 8) {
+                become(cell, Material::Fire, uint8_t(150 + (rnd() % 20u)));
+            } else if (dy < 0 && cell.id == Material::Empty) {
+                become(cell, Material::Smoke, uint8_t(60 + (rnd() % 40u)));
             } else {
-                become(cell, Material::Fire, uint8_t(24 + (rnd() % 30u)));
+                become(cell, Material::Ember, uint8_t(20 + (rnd() % 24u)));
             }
         }
     }

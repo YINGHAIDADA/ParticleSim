@@ -68,7 +68,12 @@ private:
     void movePowder(int x, int y);
     void moveLiquid(int x, int y);
     void moveLava(int x, int y);
+    void moveFire(int x, int y);
+    void moveEmber(int x, int y);
+    void moveSmoke(int x, int y);
+    void moveSteam(int x, int y);
     void moveGas(int x, int y);
+    void spawn(int x, int y, Material material, uint8_t life);
     void explode(int cx, int cy);
     void become(Cell& cell, Material material, uint8_t life);
     bool neighborAt(int x, int y, int direction, int& nx, int& ny) const;
