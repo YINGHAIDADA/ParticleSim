@@ -93,5 +93,7 @@ void Render::recreateSwapchain(vk::Extent2D& newSize) {
     selectSwapchainResources();
     createPresentSemaphores();
     createFrameBuffers();
+    destroyBloomTargets();
+    createBloomTargets();
     m_ImageInFlight.assign(m_SwapchainImages.size(), vk::Fence{});
 }

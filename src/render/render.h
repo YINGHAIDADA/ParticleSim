@@ -26,7 +26,7 @@ public:
 
     void init(vk::Extent2D& windowSize, uint32_t textureWidth, uint32_t textureHeight);
     void resize(vk::Extent2D& newWindowSize);
-    void draw(std::span<const uint8_t> rgba);
+    void draw(std::span<const uint8_t> rgba, int hudPixels);
 
 private:
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
@@ -39,8 +39,27 @@ private:
         vk::Image image;
         vk::DeviceMemory imageMemory;
         vk::ImageView view;
-        vk::DescriptorSet set;
         vk::ImageLayout layout = vk::ImageLayout::eUndefined;
+    };
+
+    // Half-resolution bloom chain, one copy per frame so two frames never share an image.
+    struct ColorTarget {
+        vk::Image image;
+        vk::DeviceMemory memory;
+        vk::ImageView view;
+        vk::Framebuffer framebuffer;
+    };
+
+    struct BloomFrame {
+        ColorTarget bright;
+        ColorTarget blurA;
+        ColorTarget blurB;
+        vk::DescriptorSet brightSet;
+        vk::DescriptorSet blurFromBright;
+        vk::DescriptorSet blurFromA;
+        vk::DescriptorSet compositeSet;
+        vk::Extent2D brightExtent;
+        vk::Extent2D blurExtent;
     };
 
     bool m_DebugLayer = false;
@@ -55,11 +74,17 @@ private:
     vk::SwapchainKHR m_Swapchain;
     vk::CommandPool m_CommandPool;
     vk::RenderPass m_RenderPass;
+    vk::RenderPass m_OffscreenPass;
     vk::Pipeline m_Pipeline;
-    vk::PipelineLayout m_PipelineLayout;
-    vk::DescriptorSetLayout m_DescriptorSetLayout;
+    vk::Pipeline m_BrightPipeline;
+    vk::Pipeline m_BlurPipeline;
+    vk::PipelineLayout m_PostLayout;
+    vk::PipelineLayout m_CompositeLayout;
+    vk::DescriptorSetLayout m_SampleLayout;
+    vk::DescriptorSetLayout m_CompositeSetLayout;
     vk::DescriptorPool m_DescriptorPool;
     vk::Sampler m_Sampler;
+    vk::Sampler m_LinearSampler;
 
     std::vector<vk::Image> m_SwapchainImages;
     std::vector<vk::ImageView> m_SwapchainImagesViews;
@@ -76,6 +101,8 @@ private:
 
     vk::ShaderModule m_VertexShader;
     vk::ShaderModule m_FragmentShader;
+    vk::ShaderModule m_BrightShader;
+    vk::ShaderModule m_BlurShader;
 
     std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
@@ -86,6 +113,7 @@ private:
     uint32_t m_TexWidth = 0;
     uint32_t m_TexHeight = 0;
     std::array<FrameTarget, MAX_FRAMES_IN_FLIGHT> m_Targets{};
+    std::array<BloomFrame, MAX_FRAMES_IN_FLIGHT> m_Bloom{};
 
     void createInstance();
     void createDebugMessenger();
@@ -102,6 +130,15 @@ private:
     void createPipeline();
     void createPresentTargets();
     void destroyPresentTargets();
+    void createOffscreenPass();
+    void createBloomTargets();
+    void destroyBloomTargets();
+    void destroyColorTarget(ColorTarget& target);
+    void createColorTarget(ColorTarget& target, vk::Extent2D extent);
+    void writeSampler(vk::DescriptorSet set, uint32_t binding, vk::Sampler sampler, vk::ImageView view);
+    void drawFullscreen(vk::CommandBuffer commandBuffer, vk::Pipeline pipeline, vk::PipelineLayout layout,
+                        vk::RenderPass renderPass, vk::Framebuffer framebuffer, vk::Extent2D extent,
+                        vk::DescriptorSet set, const void* push, uint32_t pushBytes, std::array<float, 4> clear);
     void transition(vk::CommandBuffer commandBuffer, FrameTarget& target, vk::ImageLayout next);
 
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties,

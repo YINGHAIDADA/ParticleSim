@@ -42,3 +42,47 @@ void Render::createRenderPass() {
 
     SPDLOG_INFO("Render Pass was created successfully");
 }
+
+void Render::createOffscreenPass() {
+    vk::AttachmentDescription attachment;
+    attachment.format = vk::Format::eR16G16B16A16Sfloat;
+    attachment.samples = vk::SampleCountFlagBits::e1;
+    attachment.loadOp = vk::AttachmentLoadOp::eClear;
+    attachment.storeOp = vk::AttachmentStoreOp::eStore;
+    attachment.initialLayout = vk::ImageLayout::eUndefined;
+    attachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+    vk::AttachmentReference color;
+    color.attachment = 0;
+    color.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    vk::SubpassDescription subpass;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color;
+
+    vk::SubpassDependency dependencies[2];
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependencies[0].srcAccessMask = vk::AccessFlagBits::eShaderRead;
+    dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+    dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    vk::RenderPassCreateInfo info;
+    info.attachmentCount = 1;
+    info.pAttachments = &attachment;
+    info.subpassCount = 1;
+    info.pSubpasses = &subpass;
+    info.dependencyCount = 2;
+    info.pDependencies = dependencies;
+    m_OffscreenPass = VK_ERROR_CHECK(
+        m_LogicalDevice.createRenderPass(info),
+        "Offscreen render pass creating caused an error"
+    );
+}

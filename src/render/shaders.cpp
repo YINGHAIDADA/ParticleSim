@@ -32,10 +32,10 @@ vk::ShaderModule createModule(vk::Device device, const std::vector<char>& code, 
 void Render::createShaderModules() {
     SPDLOG_INFO("Creating Shader Modules");
 
-    const std::vector<char> vertex = loadFile(PARTICLESIM_VERT_SPV);
-    const std::vector<char> fragment = loadFile(PARTICLESIM_FRAG_SPV);
-    m_VertexShader = createModule(m_LogicalDevice, vertex, "Vertex shader module creating caused an error");
-    m_FragmentShader = createModule(m_LogicalDevice, fragment, "Fragment shader module creating caused an error");
+    m_VertexShader = createModule(m_LogicalDevice, loadFile(PARTICLESIM_VERT_SPV), "Vertex shader module creating caused an error");
+    m_FragmentShader = createModule(m_LogicalDevice, loadFile(PARTICLESIM_FRAG_SPV), "Fragment shader module creating caused an error");
+    m_BrightShader = createModule(m_LogicalDevice, loadFile(PARTICLESIM_BRIGHT_SPV), "Bright shader module creating caused an error");
+    m_BlurShader = createModule(m_LogicalDevice, loadFile(PARTICLESIM_BLUR_SPV), "Blur shader module creating caused an error");
 
     SPDLOG_INFO("Shader Modules were created successfully");
 }

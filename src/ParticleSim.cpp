@@ -278,7 +278,10 @@ void ParticleSimulator::updateCell(int x, int y) {
 
     const Cell& cell = m_cells[index(x, y)];
     if (cell.id == Material::Empty || cell.updated) return;
-    if (cell.id == Material::Lava && (m_frame % 3u) != 0) return;
+    if (cell.id == Material::Lava) {
+        moveLava(x, y);
+        return;
+    }
     if (cell.id == Material::Ember && (m_frame & 1u) != 0) return;
 
     switch (infoOf(cell.id).phase) {
@@ -417,6 +420,32 @@ bool ParticleSimulator::slide(int x, int y, int dx, int maxDistance) {
 void ParticleSimulator::movePowder(int x, int y) {
     if (drop(x, y, 3)) return;
     if (trySwap(x, y, x, y + 1)) return;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (trySwap(x, y, x + direction, y + 1)) return;
+    trySwap(x, y, x - direction, y + 1);
+}
+
+void ParticleSimulator::moveLava(int x, int y) {
+    constexpr int kFall = 5;
+    int landedY = y;
+    bool hitLighter = false;
+    for (int step = 1; step <= kFall; ++step) {
+        const int ny = y + step;
+        if (!inBounds(x, ny)) break;
+        const Cell& below = m_cells[index(x, ny)];
+        if (below.updated && below.id != Material::Empty) break;
+        if (below.id == Material::Empty) {
+            landedY = ny;
+            continue;
+        }
+        const MaterialInfo& other = infoOf(below.id);
+        const bool heavier = other.phase != Phase::Static && infoOf(Material::Lava).density > other.density;
+        if (!heavier || hitLighter) break;
+        landedY = ny;
+        hitLighter = true;
+    }
+    if (landedY != y && trySwap(x, y, x, landedY)) return;
+
     const int direction = (rnd() & 1u) ? 1 : -1;
     if (trySwap(x, y, x + direction, y + 1)) return;
     trySwap(x, y, x - direction, y + 1);

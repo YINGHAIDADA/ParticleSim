@@ -67,6 +67,7 @@ private:
     bool slide(int x, int y, int dx, int maxDistance);
     void movePowder(int x, int y);
     void moveLiquid(int x, int y);
+    void moveLava(int x, int y);
     void moveGas(int x, int y);
     void explode(int cx, int cy);
     void become(Cell& cell, Material material, uint8_t life);

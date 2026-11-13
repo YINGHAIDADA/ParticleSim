@@ -101,7 +101,7 @@ public:
             }
             m_Simulation->publish();
             drawHud(m_Simulation->pixelData(), m_Simulation->width(), m_Simulation->height(), *m_Simulation, m_Fps);
-            m_Render->draw(std::span<const uint8_t>(m_Simulation->pixels(), m_Simulation->pixelBytes()));
+            m_Render->draw(std::span<const uint8_t>(m_Simulation->pixels(), m_Simulation->pixelBytes()), hudWidth());
             refreshTitle(deltaTime, false);
         }
     }

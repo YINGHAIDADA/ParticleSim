@@ -233,25 +233,35 @@ find_program(GLSLANG_VALIDATOR glslangValidator
 )
 set(PARTICLE_VERT_SPV "${CMAKE_BINARY_DIR}/shaders/main.vert.spv")
 set(PARTICLE_FRAG_SPV "${CMAKE_BINARY_DIR}/shaders/main.frag.spv")
+set(PARTICLE_BRIGHT_SPV "${CMAKE_BINARY_DIR}/shaders/bright.frag.spv")
+set(PARTICLE_BLUR_SPV "${CMAKE_BINARY_DIR}/shaders/blur.frag.spv")
 file(TO_CMAKE_PATH "${PARTICLE_VERT_SPV}" PARTICLE_VERT_SPV_POSIX)
 file(TO_CMAKE_PATH "${PARTICLE_FRAG_SPV}" PARTICLE_FRAG_SPV_POSIX)
+file(TO_CMAKE_PATH "${PARTICLE_BRIGHT_SPV}" PARTICLE_BRIGHT_SPV_POSIX)
+file(TO_CMAKE_PATH "${PARTICLE_BLUR_SPV}" PARTICLE_BLUR_SPV_POSIX)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 file(WRITE "${CMAKE_BINARY_DIR}/generated/shader_path.h"
-"#pragma once\n#define PARTICLESIM_VERT_SPV \"${PARTICLE_VERT_SPV_POSIX}\"\n#define PARTICLESIM_FRAG_SPV \"${PARTICLE_FRAG_SPV_POSIX}\"\n"
+"#pragma once\n#define PARTICLESIM_VERT_SPV \"${PARTICLE_VERT_SPV_POSIX}\"\n#define PARTICLESIM_FRAG_SPV \"${PARTICLE_FRAG_SPV_POSIX}\"\n#define PARTICLESIM_BRIGHT_SPV \"${PARTICLE_BRIGHT_SPV_POSIX}\"\n#define PARTICLESIM_BLUR_SPV \"${PARTICLE_BLUR_SPV_POSIX}\"\n"
 )
 add_custom_command(
-    OUTPUT "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}"
+    OUTPUT "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}" "${PARTICLE_BRIGHT_SPV}" "${PARTICLE_BLUR_SPV}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/shaders"
     COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
             "${CMAKE_SOURCE_DIR}/assets/shaders/main.vert" -o "${PARTICLE_VERT_SPV}"
     COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
             "${CMAKE_SOURCE_DIR}/assets/shaders/main.frag" -o "${PARTICLE_FRAG_SPV}"
+    COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
+            "${CMAKE_SOURCE_DIR}/assets/shaders/bright.frag" -o "${PARTICLE_BRIGHT_SPV}"
+    COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
+            "${CMAKE_SOURCE_DIR}/assets/shaders/blur.frag" -o "${PARTICLE_BLUR_SPV}"
     DEPENDS
         "${CMAKE_SOURCE_DIR}/assets/shaders/main.vert"
         "${CMAKE_SOURCE_DIR}/assets/shaders/main.frag"
+        "${CMAKE_SOURCE_DIR}/assets/shaders/bright.frag"
+        "${CMAKE_SOURCE_DIR}/assets/shaders/blur.frag"
     VERBATIM
 )
-add_custom_target(ParticleSimShaders DEPENDS "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}")
+add_custom_target(ParticleSimShaders DEPENDS "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}" "${PARTICLE_BRIGHT_SPV}" "${PARTICLE_BLUR_SPV}")
 add_dependencies(${PROJECT_NAME} ParticleSimShaders)
 
 set(INCLUDE_DIRS "")
