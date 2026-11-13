@@ -20,7 +20,7 @@ void Render::createCommandBuffers() {
     SPDLOG_INFO("Creating Command Buffers");
 
     vk::CommandBufferAllocateInfo commandBufferAllocInfo {};
-    commandBufferAllocInfo.commandBufferCount = CONTAINER_COUNT(m_SwapchainImages);
+    commandBufferAllocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
     commandBufferAllocInfo.commandPool = m_CommandPool;
     commandBufferAllocInfo.level = vk::CommandBufferLevel::ePrimary;
 

@@ -33,8 +33,11 @@ echo "开始执行cmake配置："
 
 echo "VulkanSDK: $VULKAN_SDK"
 /opt/homebrew/bin/cmake -DCMAKE_BUILD_TYPE=Debug \
--DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
--DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
--S/Users/yinghai/dev/ParticleSim \
--B/Users/yinghai/dev/ParticleSim/output/macOS-debug \
--G Ninja
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+  -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+  -S/Users/yinghai/dev/ParticleSim \
+  -B/Users/yinghai/dev/ParticleSim/output/macOS-debug \
+  -G Ninja
+
+ninja -C ./output/macOS-debug
+

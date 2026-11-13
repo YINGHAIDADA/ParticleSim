@@ -7,12 +7,12 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
 	const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData
 ) {
-	if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) {
-		SPDLOG_INFO("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
+	if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+		spdlog::error("[vulkan] {}", pCallbackData->pMessage);
 	} else if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-		spdlog::warn("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
-	} else if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
-		spdlog::error("[{}] {}", spdlog::fmt_lib::format(fg(spdlog::fmt_lib::terminal_color::red), "vulkan"), pCallbackData->pMessage);
+		spdlog::warn("[vulkan] {}", pCallbackData->pMessage);
+	} else if (messageSeverity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) {
+		SPDLOG_INFO("[vulkan] {}", pCallbackData->pMessage);
 	}
 
 	return vk::False;

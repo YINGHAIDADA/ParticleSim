@@ -1,310 +1,493 @@
-// main.cpp
 #include "ParticleSim.h"
-#include "Utilities.h"
 
-ParticleSimulator::ParticleSimulator(int texture_wdith, int texture_height) {
-    this->m_textureWidth = texture_wdith;
-    this->m_textureHeight = texture_height;
-    this->m_particles = new std::vector<Particle>(texture_wdith * texture_height, Particle{MAT_EMPTY});
-    color_buffer = new Color[texture_wdith * texture_height];
+#include <algorithm>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+enum class Phase : uint8_t { Empty, Static, Powder, Liquid, Gas };
+
+struct MaterialInfo {
+    Phase phase;
+    uint8_t density;
+    uint8_t r, g, b, a;
+    uint8_t jitter;
+};
+
+constexpr MaterialInfo kMaterials[] = {
+    {Phase::Empty, 0, 0, 0, 0, 0, 0},
+    {Phase::Powder, 4, 150, 100, 50, 255, 18},
+    {Phase::Liquid, 3, 20, 100, 170, 200, 8},
+    {Phase::Powder, 4, 200, 180, 190, 255, 8},
+    {Phase::Static, 9, 60, 40, 20, 255, 8},
+    {Phase::Gas, 1, 150, 20, 0, 255, 0},
+    {Phase::Gas, 1, 50, 50, 50, 180, 6},
+    {Phase::Powder, 4, 200, 120, 20, 255, 10},
+    {Phase::Gas, 1, 220, 220, 250, 160, 4},
+    {Phase::Powder, 4, 60, 60, 60, 255, 6},
+    {Phase::Liquid, 2, 80, 70, 60, 230, 6},
+    {Phase::Liquid, 6, 200, 50, 0, 255, 10},
+    {Phase::Static, 9, 120, 110, 120, 255, 8},
+    {Phase::Liquid, 3, 90, 200, 60, 200, 8},
+};
+
+static_assert(std::size(kMaterials) == static_cast<size_t>(Material::Count));
+
+const MaterialInfo& infoOf(Material material) {
+    const auto id = static_cast<size_t>(material);
+    if (id >= static_cast<size_t>(Material::Count)) {
+        throw std::logic_error("material id out of range");
+    }
+    return kMaterials[id];
 }
-ParticleSimulator::~ParticleSimulator() {
-    delete m_particles;
-    delete color_buffer;
-    m_particles = nullptr;
+
+int vary(uint8_t base, uint8_t shade, uint8_t amount) {
+    if (amount == 0) return base;
+    const int delta = (int(shade) - 128) * int(amount) / 128;
+    return std::clamp(int(base) + delta, 0, 255);
 }
 
-void ParticleSimulator::init() {
-
+bool dissolves(Material material) {
+    switch (material) {
+    case Material::Sand:
+    case Material::Salt:
+    case Material::Wood:
+    case Material::Gunpowder:
+    case Material::Oil:
+    case Material::Ember:
+        return true;
+    case Material::Empty:
+    case Material::Water:
+    case Material::Fire:
+    case Material::Smoke:
+    case Material::Steam:
+    case Material::Lava:
+    case Material::Stone:
+    case Material::Acid:
+    case Material::Count:
+        return false;
+    }
+    const Material unhandled = material;
+    throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
 }
 
-void ParticleSimulator::resetParticles() {
-    std::fill(m_particles->begin(), m_particles->end(), Particle{MAT_EMPTY});
+uint8_t lifeFor(Material material, uint32_t noise) {
+    switch (material) {
+    case Material::Fire:
+        return uint8_t(80 + (noise % 70));
+    case Material::Smoke:
+        return uint8_t(100 + (noise % 80));
+    case Material::Steam:
+        return uint8_t(70 + (noise % 50));
+    case Material::Ember:
+        return uint8_t(50 + (noise % 40));
+    case Material::Empty:
+    case Material::Sand:
+    case Material::Water:
+    case Material::Salt:
+    case Material::Wood:
+    case Material::Gunpowder:
+    case Material::Oil:
+    case Material::Lava:
+    case Material::Stone:
+    case Material::Acid:
+    case Material::Count:
+        return 0;
+    }
+    const Material unhandled = material;
+    throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+}
+
+bool usesLife(Material material) {
+    switch (material) {
+    case Material::Fire:
+    case Material::Smoke:
+    case Material::Steam:
+    case Material::Ember:
+        return true;
+    case Material::Empty:
+    case Material::Sand:
+    case Material::Water:
+    case Material::Salt:
+    case Material::Wood:
+    case Material::Gunpowder:
+    case Material::Oil:
+    case Material::Lava:
+    case Material::Stone:
+    case Material::Acid:
+    case Material::Count:
+        return false;
+    }
+    const Material unhandled = material;
+    throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+}
+
+}  // namespace
+
+const char* materialName(Material material) {
+    switch (material) {
+    case Material::Empty: return "Empty";
+    case Material::Sand: return "Sand";
+    case Material::Water: return "Water";
+    case Material::Salt: return "Salt";
+    case Material::Wood: return "Wood";
+    case Material::Fire: return "Fire";
+    case Material::Smoke: return "Smoke";
+    case Material::Ember: return "Ember";
+    case Material::Steam: return "Steam";
+    case Material::Gunpowder: return "Gunpowder";
+    case Material::Oil: return "Oil";
+    case Material::Lava: return "Lava";
+    case Material::Stone: return "Stone";
+    case Material::Acid: return "Acid";
+    case Material::Count: return "Unknown";
+    }
+    const Material unhandled = material;
+    throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+}
+
+ParticleSimulator::ParticleSimulator(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        throw std::invalid_argument("simulation size must be positive");
+    }
+    m_width = width;
+    m_height = height;
+    const size_t cells = static_cast<size_t>(width) * static_cast<size_t>(height);
+    m_cells.resize(cells);
+    m_pixels.resize(cells * 4);
+    seed();
+}
+
+void ParticleSimulator::setBrushRadius(int radius) {
+    m_brush = std::clamp(radius, 1, 48);
 }
 
 void ParticleSimulator::update(float deltaTime) {
-    m_deltaTime = deltaTime; // Update particles
-
-
+    if (!m_running) return;
+    m_time += deltaTime;
+    constexpr float kStep = 1.f / 60.f;
+    if (m_time < kStep) return;
+    step();
+    m_time = std::min(m_time - kStep, kStep);
 }
 
-Particle ParticleSimulator::particle_empty()
-{
-    Particle p = {0};
-    p.id = mat_id_empty;
-    p.color = mat_col_empty;
-    return p;
+void ParticleSimulator::paint(int x, int y, int radius, Material material) {
+    fill(x, y, radius, material);
 }
 
-Particle ParticleSimulator::particle_sand()
-{
-    Particle p = {0};
-    p.id = mat_id_sand;
-    // Random sand color
-    float r = (float)(Utilities::random_val(0, 10)) / 10.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.8f, 1.f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.5f, 0.6f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.2f, 0.25f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+void ParticleSimulator::materialRgb(Material material, uint8_t& r, uint8_t& g, uint8_t& b) const {
+    if (material == Material::Fire) {
+        r = 220;
+        g = 70;
+        b = 16;
+        return;
+    }
+    const MaterialInfo& info = infoOf(material);
+    r = info.r;
+    g = info.g;
+    b = info.b;
 }
 
-Particle ParticleSimulator::particle_water()
-{
-    Particle p = {0};
-    p.id = mat_id_water;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.1f, 0.15f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.3f, 0.35f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.7f, 0.8f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+void ParticleSimulator::clear() {
+    m_cells.assign(m_cells.size(), {});
+    publish();
 }
 
-Particle ParticleSimulator::particle_salt()
-{
-    Particle p = {0};
-    p.id = mat_id_salt;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.9f, 1.0f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.8f, 0.85f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.8f, 0.9f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+void ParticleSimulator::seed() {
+    for (int x = 0; x < m_width; ++x) {
+        for (int y = m_height - 5; y < m_height; ++y) {
+            setCell(x, y, Material::Stone);
+        }
+    }
+    fill(m_width / 3, m_height / 3, 34, Material::Sand);
+    fill(m_width / 2, m_height / 2 + 24, 30, Material::Water);
+    fill(m_width * 2 / 3, m_height / 3, 16, Material::Oil);
+    publish();
 }
 
-Particle ParticleSimulator::particle_wood()
-{
-    Particle p = {0};
-    p.id = mat_id_wood;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.23f, 0.25f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.15f, 0.18f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.02f, 0.03f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+void ParticleSimulator::step() {
+    ++m_frame;
+    for (Cell& cell : m_cells) cell.updated = 0;
+
+    const int direction = (m_frame & 1u) ? 1 : -1;
+    const int xStart = direction > 0 ? 0 : m_width - 1;
+    const int xEnd = direction > 0 ? m_width : -1;
+    for (int y = m_height - 1; y >= 0; --y) {
+        const size_t row = static_cast<size_t>(y) * static_cast<size_t>(m_width);
+        for (int x = xStart; x != xEnd; x += direction) {
+            if (m_cells[row + static_cast<size_t>(x)].id == Material::Empty) continue;
+            updateCell(x, y);
+        }
+    }
 }
 
-Particle ParticleSimulator::particle_fire()
-{
-    Particle p = {0};
-    p.id = mat_id_fire;
-    p.color = mat_col_fire;
-    return p;
+void ParticleSimulator::publish() {
+    uint8_t* out = m_pixels.data();
+    for (const Cell& cell : m_cells) {
+        if (cell.id == Material::Empty || cell.id == Material::Count) {
+            out[0] = out[1] = out[2] = out[3] = 0;
+        } else if (cell.id == Material::Fire) {
+            const int heat = std::min(255, 70 + int(cell.life));
+            out[0] = 255;
+            out[1] = uint8_t(std::min(210, heat));
+            out[2] = 20;
+            out[3] = 255;
+        } else {
+            const MaterialInfo& info = infoOf(cell.id);
+            out[0] = uint8_t(vary(info.r, cell.shade, info.jitter));
+            out[1] = uint8_t(vary(info.g, cell.shade, info.jitter));
+            out[2] = uint8_t(vary(info.b, cell.shade, info.jitter));
+            int alpha = info.a;
+            if (cell.id == Material::Smoke || cell.id == Material::Steam) {
+                alpha = std::min(255, 36 + int(cell.life));
+            }
+            out[3] = uint8_t(alpha);
+        }
+        out += 4;
+    }
 }
 
-Particle ParticleSimulator::particle_lava()
-{
-    Particle p = {0};
-    p.id = mat_id_lava;
-    p.color = mat_col_fire;
-    return p;
+void ParticleSimulator::fill(int cx, int cy, int radius, Material material) {
+    if (radius < 0) return;
+    const int radiusSq = radius * radius;
+    for (int y = cy - radius; y <= cy + radius; ++y) {
+        for (int x = cx - radius; x <= cx + radius; ++x) {
+            const int dx = x - cx;
+            const int dy = y - cy;
+            if (dx * dx + dy * dy > radiusSq) continue;
+            if (!inBounds(x, y)) continue;
+            setCell(x, y, material);
+        }
+    }
 }
 
-Particle ParticleSimulator::particle_smoke()
-{
-    Particle p = {0};
-    p.id = mat_id_smoke;
-    p.color = mat_col_smoke;
-    return p;
+void ParticleSimulator::setCell(int x, int y, Material material) {
+    Cell& cell = m_cells[index(x, y)];
+    cell.id = material;
+    cell.shade = uint8_t(rnd() & 255u);
+    cell.updated = 0;
+    cell.life = lifeFor(material, rnd());
 }
 
-Particle ParticleSimulator::particle_ember()
-{
-    Particle p = {0};
-	p.id = mat_id_ember;
-	p.color = mat_col_ember;
-	return p;
+void ParticleSimulator::updateCell(int x, int y) {
+    const Cell& current = m_cells[index(x, y)];
+    if (current.id == Material::Empty || current.updated) return;
+    if (react(x, y)) return;
+
+    const Cell& cell = m_cells[index(x, y)];
+    if (cell.id == Material::Empty || cell.updated) return;
+    if (cell.id == Material::Lava && (m_frame % 3u) != 0) return;
+    if (cell.id == Material::Ember && (m_frame & 1u) != 0) return;
+
+    switch (infoOf(cell.id).phase) {
+    case Phase::Empty:
+    case Phase::Static:
+        return;
+    case Phase::Powder:
+        movePowder(x, y);
+        return;
+    case Phase::Liquid:
+        moveLiquid(x, y);
+        return;
+    case Phase::Gas:
+        moveGas(x, y);
+        return;
+    }
+    const Phase unhandled = infoOf(cell.id).phase;
+    throw std::logic_error("unhandled phase " + std::to_string(int(unhandled)));
 }
 
-Particle ParticleSimulator::particle_steam()
-{
-    Particle p = {0};
-    p.id = mat_id_steam;
-    p.color = mat_col_steam;
-    return p;
+bool ParticleSimulator::react(int x, int y) {
+    Cell& self = m_cells[index(x, y)];
+    if (usesLife(self.id)) {
+        if (self.life == 0) {
+            const bool ember = self.id == Material::Fire || self.id == Material::Ember;
+            const bool smoke = ember && (rnd() % 3u) == 0;
+            become(self, smoke ? Material::Smoke : Material::Empty, smoke ? uint8_t(80 + (rnd() % 60u)) : 0);
+            return true;
+        }
+        --self.life;
+    }
+
+    if (self.id == Material::Water) {
+        for (int i = 0; i < 4; ++i) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, i, nx, ny)) continue;
+            Cell& other = m_cells[index(nx, ny)];
+            if (other.id == Material::Lava) {
+                become(self, Material::Steam, uint8_t(60 + (rnd() % 50u)));
+                become(other, Material::Stone, 0);
+                return true;
+            }
+            if (other.id == Material::Fire) {
+                become(self, Material::Steam, uint8_t(40 + (rnd() % 40u)));
+                become(other, Material::Smoke, uint8_t(40 + (rnd() % 40u)));
+                return true;
+            }
+        }
+    }
+
+    if (self.id == Material::Salt) {
+        for (int i = 0; i < 4; ++i) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, i, nx, ny)) continue;
+            if (m_cells[index(nx, ny)].id == Material::Water && (rnd() % 12u) == 0) {
+                become(self, Material::Empty, 0);
+                return true;
+            }
+        }
+    }
+
+    if (self.id == Material::Acid) {
+        int nx = 0;
+        int ny = 0;
+        if (neighborAt(x, y, int(rnd() % 4u), nx, ny)) {
+            Cell& other = m_cells[index(nx, ny)];
+            if (dissolves(other.id) && (rnd() % 4u) == 0) {
+                become(other, Material::Empty, 0);
+                if ((rnd() % 6u) == 0) {
+                    become(self, Material::Empty, 0);
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (self.id == Material::Fire || self.id == Material::Lava) {
+        for (int i = 0; i < 4; ++i) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, i, nx, ny)) continue;
+            Cell& other = m_cells[index(nx, ny)];
+            if (other.id == Material::Gunpowder) {
+                explode(nx, ny);
+                return true;
+            }
+            if (other.id == Material::Wood && (rnd() % 36u) == 0) {
+                become(other, Material::Fire, uint8_t(50 + (rnd() % 40u)));
+            } else if (other.id == Material::Oil && (rnd() % 5u) == 0) {
+                become(other, Material::Fire, uint8_t(30 + (rnd() % 30u)));
+            }
+        }
+    }
+
+    return false;
 }
 
-Particle ParticleSimulator::particle_gunpowder()
-{
-    Particle p = {0};
-    p.id = mat_id_gunpowder;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.15f, 0.2f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.15f, 0.2f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.15f, 0.2f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+bool ParticleSimulator::trySwap(int x, int y, int nx, int ny) {
+    if (!inBounds(nx, ny) || (x == nx && y == ny)) return false;
+    Cell& src = m_cells[index(x, y)];
+    Cell& dst = m_cells[index(nx, ny)];
+    if (dst.id != Material::Empty && dst.updated) return false;
+
+    const bool canMove = dst.id == Material::Empty ||
+        (infoOf(dst.id).phase != Phase::Static && infoOf(src.id).density > infoOf(dst.id).density);
+    if (!canMove) return false;
+
+    src.updated = 1;
+    dst.updated = 1;
+    std::swap(src, dst);
+    return true;
 }
 
-Particle ParticleSimulator::particle_oil()
-{
-    Particle p = {0};
-    p.id = mat_id_oil;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.12f, 0.15f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.10f, 0.12f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.08f, 0.10f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+bool ParticleSimulator::drop(int x, int y, int maxDistance) {
+    int landed = y;
+    for (int step = 1; step <= maxDistance; ++step) {
+        const int ny = y + step;
+        if (!inBounds(x, ny) || m_cells[index(x, ny)].id != Material::Empty) break;
+        landed = ny;
+    }
+    return landed != y && trySwap(x, y, x, landed);
 }
 
-Particle ParticleSimulator::particle_stone()
-{
-    Particle p = {0};
-    p.id = mat_id_stone;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.5f, 0.65f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.5f, 0.65f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.5f, 0.65f, r) * 255.f);
-    p.color.a = 255;
-    return p;
+bool ParticleSimulator::slide(int x, int y, int dx, int maxDistance) {
+    int landed = x;
+    for (int step = 1; step <= maxDistance; ++step) {
+        const int nx = x + dx * step;
+        if (!inBounds(nx, y) || m_cells[index(nx, y)].id != Material::Empty) break;
+        landed = nx;
+    }
+    return landed != x && trySwap(x, y, landed, y);
 }
 
-Particle ParticleSimulator::particle_acid()
-{
-    Particle p = {0};
-    p.id = mat_id_acid;
-    float r = (float)(Utilities::random_val(0, 1)) / 2.f;
-    p.color.r = (uint8_t)(Utilities::interp_linear(0.05f, 0.06f, r) * 255.f);
-    p.color.g = (uint8_t)(Utilities::interp_linear(0.8f, 0.85f, r) * 255.f);
-    p.color.b = (uint8_t)(Utilities::interp_linear(0.1f, 0.12f, r) * 255.f);
-    p.color.a = 200;
-    return p;
+void ParticleSimulator::movePowder(int x, int y) {
+    if (drop(x, y, 3)) return;
+    if (trySwap(x, y, x, y + 1)) return;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (trySwap(x, y, x + direction, y + 1)) return;
+    trySwap(x, y, x - direction, y + 1);
 }
 
-void ParticleSimulator::update_particle_sim()
-{
+void ParticleSimulator::moveLiquid(int x, int y) {
+    if (drop(x, y, 2)) return;
+    if (trySwap(x, y, x, y + 1)) return;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (trySwap(x, y, x + direction, y + 1)) return;
+    if (trySwap(x, y, x - direction, y + 1)) return;
+    if (slide(x, y, direction, 2)) return;
+    slide(x, y, -direction, 2);
 }
 
-void ParticleSimulator::update_sand(uint32_t x, uint32_t y)
-{
-	// For water, same as sand, but we'll check immediate left and right as well
-	uint32_t read_idx = compute_idx(x, y);
-	Particle* p = &((*m_particles)[read_idx]);
-
-    //更新速度
-	p->velocity.y = utilities_clamp(p->velocity.y + (m_gravity * m_deltaTime), -10.f, 10.f);
-
-	// 检查粒子是否可以直接下落，如果粒子下方是边界内且非空且不是水，则将速度减半
-	if (in_bounds(x, y + 1) && !is_empty(x, y + 1) && get_particle_at(x, y + 1).id != mat_id_water) {
-		p->velocity.y /= 2.f;
-	}
-
-    // 计算新的位置
-	int32_t vi_x = x + (int32_t)p->velocity.x; 
-	int32_t vi_y = y + (int32_t)p->velocity.y;
-
-	uint32_t b_idx = compute_idx(x, y + 1);
-	uint32_t br_idx = compute_idx(x + 1, y + 1);
-	uint32_t bl_idx = compute_idx(x - 1, y + 1);
-
-	int32_t lx, ly;
-
-	Particle tmp_a = (*m_particles)[read_idx]; // 读取当前粒子
-    
-
-	// 检查是否可以交换位置Physics (using velocity)
-	if (in_bounds(vi_x, vi_y) && (is_empty(vi_x, vi_y) ||
-			((get_particle_at(vi_x, vi_y).id == mat_id_water) && 
-			  !get_particle_at(vi_x, vi_y).updated && 
-			   math_vec2_len(get_particle_at(vi_x, vi_y).velocity) - math_vec2_len(tmp_a.velocity) > 10.f))) {
-
-		Particle tmp_b = get_particle_at(vi_x, vi_y); // 读取目标位置上的粒子
-
-		// Try to throw water out
-		if (tmp_b.id == mat_id_water) {
-
-			int32_t rx = Utilities::random_val(-2, 2);
-			tmp_b.velocity = (Vec2){(float)rx, -4.f};
-
-			write_data(compute_idx(vi_x, vi_y), tmp_a);	
-
-			for(int32_t i = -10; i < 0; ++i) {
-				for (int32_t j = -10; j < 10; ++j) {
-					if (is_empty(vi_x + j, vi_y + i)) {
-						write_data(compute_idx(vi_x + j, vi_y + i), tmp_b);
-						break;
-					}	
-				}
-			}
-
-			// Couldn't write there, so, uh, destroy it.
-			write_data(read_idx, particle_empty());
-		}
-		else if (is_empty(vi_x, vi_y)) {
-			write_data(compute_idx(vi_x, vi_y), tmp_a);
-			write_data(read_idx, tmp_b);
-		}
-	}
-	//Simple falling, changing the velocity here ruins everything. I need to redo this entire simulation.
-	// else if (in_bounds(x, y + 1) && ((is_empty(x, y + 1) || ((*m_particles)[b_idx].id == mat_id_water)))) {
-	// 	p->velocity.y += (m_gravity * m_deltaTime);
-	// 	Particle tmp_b = get_particle_at(x, y + 1);
-	// 	write_data(b_idx, *p);
-	// 	write_data(read_idx, tmp_b);
-	// }
-	// else if (in_bounds(x - 1, y + 1) && ((is_empty(x - 1, y + 1) || (*m_particles)[bl_idx].id == mat_id_water))) {
-	// 	p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
-	// 	p->velocity.y += (m_gravity * m_deltaTime);
-	// 	Particle tmp_b = get_particle_at(x - 1, y + 1);
-	// 	write_data(bl_idx, *p);
-	// 	write_data(read_idx, tmp_b);
-	// }
-	// else if (in_bounds(x + 1, y + 1) && ((is_empty(x + 1, y + 1) || (*m_particles)[br_idx].id == mat_id_water))) {
-	// 	p->velocity.x = is_in_liquid(x, y, &lx, &ly) ? 0.f : Utilities::random_val(0, 1) == 0 ? -1.f : 1.f;
-	// 	p->velocity.y += (m_gravity * m_deltaTime);
-	// 	Particle tmp_b = get_particle_at(x + 1, y + 1);
-	// 	write_data(br_idx, *p);
-	// 	write_data(read_idx, tmp_b);
-	// }
-	// else if (is_in_liquid(x, y, &lx, &ly) && Utilities::random_val(0, 10) == 0) {
-	// 	Particle tmp_b = get_particle_at(lx, ly);
-	// 	write_data(compute_idx(lx, ly), *p);
-	// 	write_data(read_idx, tmp_b);
-	// }
+void ParticleSimulator::moveGas(int x, int y) {
+    if (trySwap(x, y, x, y - 1)) return;
+    const int direction = (rnd() & 1u) ? 1 : -1;
+    if (trySwap(x, y, x + direction, y - 1)) return;
+    if (trySwap(x, y, x - direction, y - 1)) return;
+    if (trySwap(x, y, x + direction, y)) return;
+    trySwap(x, y, x - direction, y);
 }
 
-void ParticleSimulator::update_water(uint32_t x, uint32_t y)
-{
+void ParticleSimulator::explode(int cx, int cy) {
+    constexpr int kRadius = 4;
+    for (int y = cy - kRadius; y <= cy + kRadius; ++y) {
+        for (int x = cx - kRadius; x <= cx + kRadius; ++x) {
+            if (!inBounds(x, y)) continue;
+            const int dx = x - cx;
+            const int dy = y - cy;
+            if (dx * dx + dy * dy > kRadius * kRadius) continue;
+            Cell& cell = m_cells[index(x, y)];
+            if (cell.id == Material::Stone || cell.id == Material::Lava) continue;
+            if (dx * dx + dy * dy <= 2) {
+                become(cell, Material::Empty, 0);
+            } else {
+                become(cell, Material::Fire, uint8_t(24 + (rnd() % 30u)));
+            }
+        }
+    }
 }
 
-void ParticleSimulator::update_salt(uint32_t x, uint32_t y)
-{
+void ParticleSimulator::become(Cell& cell, Material material, uint8_t life) {
+    cell.id = material;
+    cell.life = life;
+    cell.shade = uint8_t(rnd() & 255u);
+    cell.updated = 1;
 }
 
-void ParticleSimulator::update_fire(uint32_t x, uint32_t y)
-{
+bool ParticleSimulator::neighborAt(int x, int y, int direction, int& nx, int& ny) const {
+    static constexpr int kDx[4] = {1, -1, 0, 0};
+    static constexpr int kDy[4] = {0, 0, 1, -1};
+    nx = x + kDx[direction];
+    ny = y + kDy[direction];
+    return inBounds(nx, ny);
 }
 
-void ParticleSimulator::update_lava(uint32_t x, uint32_t y)
-{
+bool ParticleSimulator::inBounds(int x, int y) const {
+    return x >= 0 && y >= 0 && x < m_width && y < m_height;
 }
 
-void ParticleSimulator::update_smoke(uint32_t x, uint32_t y)
-{
+int ParticleSimulator::index(int x, int y) const {
+    return y * m_width + x;
 }
 
-void ParticleSimulator::update_ember(uint32_t x, uint32_t y)
-{
-}
-
-void ParticleSimulator::update_steam(uint32_t x, uint32_t y)
-{
-}
-
-void ParticleSimulator::update_gunpowder(uint32_t x, uint32_t y)
-{
-}
-
-void ParticleSimulator::update_oil(uint32_t x, uint32_t y)
-{
-}
-
-void ParticleSimulator::update_acid(uint32_t x, uint32_t y)
-{
-}
-
-void ParticleSimulator::update_default(uint32_t x, uint32_t y)
-{
+uint32_t ParticleSimulator::rnd() {
+    uint32_t x = m_rng;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    m_rng = x;
+    return x;
 }

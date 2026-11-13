@@ -217,8 +217,42 @@ file(GLOB_RECURSE PROJECT_HEADER_DIRS "src/*.h")
 add_executable(${PROJECT_NAME} 
 src/main.cpp
 src/ParticleSim.cpp
+src/Hud.cpp
 ${PROJECT_RENDER_SOURCE_FILES}
 )
+
+# Debug still has symbols, but the cell loop is too slow at -O0 to hold 60 fps.
+target_compile_options(${PROJECT_NAME} PRIVATE
+    $<$<AND:$<CONFIG:Debug>,$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>>:-O2>
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/O2>
+)
+
+find_program(GLSLANG_VALIDATOR glslangValidator
+    HINTS "$ENV{VULKAN_SDK}/macOS/bin" "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+    REQUIRED
+)
+set(PARTICLE_VERT_SPV "${CMAKE_BINARY_DIR}/shaders/main.vert.spv")
+set(PARTICLE_FRAG_SPV "${CMAKE_BINARY_DIR}/shaders/main.frag.spv")
+file(TO_CMAKE_PATH "${PARTICLE_VERT_SPV}" PARTICLE_VERT_SPV_POSIX)
+file(TO_CMAKE_PATH "${PARTICLE_FRAG_SPV}" PARTICLE_FRAG_SPV_POSIX)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+file(WRITE "${CMAKE_BINARY_DIR}/generated/shader_path.h"
+"#pragma once\n#define PARTICLESIM_VERT_SPV \"${PARTICLE_VERT_SPV_POSIX}\"\n#define PARTICLESIM_FRAG_SPV \"${PARTICLE_FRAG_SPV_POSIX}\"\n"
+)
+add_custom_command(
+    OUTPUT "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/shaders"
+    COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
+            "${CMAKE_SOURCE_DIR}/assets/shaders/main.vert" -o "${PARTICLE_VERT_SPV}"
+    COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.2
+            "${CMAKE_SOURCE_DIR}/assets/shaders/main.frag" -o "${PARTICLE_FRAG_SPV}"
+    DEPENDS
+        "${CMAKE_SOURCE_DIR}/assets/shaders/main.vert"
+        "${CMAKE_SOURCE_DIR}/assets/shaders/main.frag"
+    VERBATIM
+)
+add_custom_target(ParticleSimShaders DEPENDS "${PARTICLE_VERT_SPV}" "${PARTICLE_FRAG_SPV}")
+add_dependencies(${PROJECT_NAME} ParticleSimShaders)
 
 set(INCLUDE_DIRS "")
 foreach(HEADER ${PROJECT_HEADER_DIRS})
@@ -233,6 +267,7 @@ message(STATUS "🔷 include directories: ${INCLUDE_DIRS}")
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${INCLUDE_DIRS}
     ${Vulkan_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}/generated
     third_party/stb
 )
 

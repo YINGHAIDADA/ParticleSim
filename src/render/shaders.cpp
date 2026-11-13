@@ -1,73 +1,41 @@
 #include "render.h"
 #include "render_utils.h"
+#include "shader_path.h"
+
+#include <stdexcept>
+#include <vector>
+
+namespace {
 
 std::vector<char> loadFile(const char* filePath) {
-    std::ifstream file = std::ifstream(filePath, std::ios::binary | std::ios::ate);
-
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-		std::ostringstream os;
-		os << "Failed to open file" << filePath;
+        throw std::runtime_error(std::string("Failed to open shader ") + filePath);
+    }
 
-		throw std::runtime_error(os.str());
-	}
-
-    size_t fileSize { static_cast<size_t>(file.tellg()) };
+    const auto fileSize = static_cast<size_t>(file.tellg());
     std::vector<char> buffer(fileSize);
-
     file.seekg(0, std::ios::beg);
-    file.read(buffer.data(), fileSize);
-    file.close();
-
+    file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
     return buffer;
 }
+
+vk::ShaderModule createModule(vk::Device device, const std::vector<char>& code, const char* what) {
+    vk::ShaderModuleCreateInfo info;
+    info.codeSize = code.size();
+    info.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    return VK_ERROR_CHECK(device.createShaderModule(info), what);
+}
+
+}  // namespace
 
 void Render::createShaderModules() {
-	SPDLOG_INFO("Creating Shader Modules");
+    SPDLOG_INFO("Creating Shader Modules");
 
-    std::vector<char> vertexContent = loadFile("assets/shaders/basic_vert.spv");
-	std::vector<char> fragmentContent = loadFile("assets/shaders/basic_frag.spv");
+    const std::vector<char> vertex = loadFile(PARTICLESIM_VERT_SPV);
+    const std::vector<char> fragment = loadFile(PARTICLESIM_FRAG_SPV);
+    m_VertexShader = createModule(m_LogicalDevice, vertex, "Vertex shader module creating caused an error");
+    m_FragmentShader = createModule(m_LogicalDevice, fragment, "Fragment shader module creating caused an error");
 
-	vk::ShaderModuleCreateInfo vertexInfo {};
-	vertexInfo.codeSize = vertexContent.size();
-	vertexInfo.pCode = reinterpret_cast<uint32_t*>(vertexContent.data());
-
-	vk::ShaderModuleCreateInfo fragmentInfo {};
-	fragmentInfo.codeSize = fragmentContent.size();
-	fragmentInfo.pCode = reinterpret_cast<uint32_t*>(fragmentContent.data());
-
-	m_VertexShader = VK_ERROR_CHECK(
-		m_LogicalDevice.createShaderModule(vertexInfo),
-		"Vertex Shader Module creating caused an error"
-	);
-
-	m_FragmentShader = VK_ERROR_CHECK(
-		m_LogicalDevice.createShaderModule(fragmentInfo),
-		"Fragment Shader Module creating caused an error"
-	);
-
-	SPDLOG_INFO("Shader Modules were created successfully");
-}
-
-// 创建着色器模块
-vk::ShaderModule Render::createShaderModule(const std::vector<char>& code) {
-    vk::ShaderModuleCreateInfo createInfo;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-    return VK_ERROR_CHECK(m_LogicalDevice.createShaderModule(createInfo), "Shader Module creating caused an error");
-}
-// 读取着色器文件
-std::vector<char> Render::readFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file: " + filename);
-    }
-    
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
-    
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-    file.close();
-    
-    return buffer;
+    SPDLOG_INFO("Shader Modules were created successfully");
 }

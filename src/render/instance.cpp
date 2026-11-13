@@ -1,6 +1,8 @@
 #include "render.h"
 #include "render_utils.h"
 
+#include <cstdlib>
+
 void Render::createInstance() {
     SPDLOG_INFO("Creating Instance");
 
@@ -45,14 +47,16 @@ void Render::createInstance() {
     std::vector<const char*> requiredLayers {};
     std::vector<const char*> requiredExtensions {};
 
-    m_DebugLayer = supportedLayers.contains("VK_LAYER_KHRONOS_validation");
+    const char* validation = std::getenv("PARTICLESIM_VALIDATION");
+    const bool wantValidation = validation != nullptr && validation[0] == '1';
+    m_DebugLayer = wantValidation && supportedLayers.contains("VK_LAYER_KHRONOS_validation");
 
     if (m_DebugLayer) {
-        SPDLOG_INFO("Debug layer supported");
+        SPDLOG_INFO("Validation layer enabled");
         requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         requiredLayers.push_back("VK_LAYER_KHRONOS_validation");
     } else {
-        SPDLOG_INFO("Debug layer not supported");
+        SPDLOG_INFO("Validation layer disabled");
     }
 
     uint32_t sdlRequiredExtensionsCount = 0;

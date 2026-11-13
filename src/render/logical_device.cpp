@@ -1,6 +1,8 @@
 #include "render.h"
 #include "render_utils.h"
 
+#include <cstring>
+
 void Render::createLogicalDevice() {
     SPDLOG_INFO("Creating Logical Device");
 
@@ -24,6 +26,15 @@ void Render::createLogicalDevice() {
     std::vector<const char*> requiredExtensions {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
+    const auto deviceExtensions = m_PhysicalDevice.enumerateDeviceExtensionProperties();
+    if (deviceExtensions.result == vk::Result::eSuccess) {
+        for (const vk::ExtensionProperties& extension : deviceExtensions.value) {
+            if (std::strcmp(extension.extensionName, "VK_KHR_portability_subset") == 0) {
+                requiredExtensions.push_back("VK_KHR_portability_subset");
+                break;
+            }
+        }
+    }
 
     vk::DeviceCreateInfo deviceCreateInfo {};
 	deviceCreateInfo.queueCreateInfoCount = CONTAINER_COUNT(queueCreateInfos);

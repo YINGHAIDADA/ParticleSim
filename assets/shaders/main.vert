@@ -1,11 +1,9 @@
 #version 450
 
-layout (location = 0) in vec2 a_pos;
-layout (location = 1) in vec2 a_texCoord;
-uniform int u_flip_y;
-layout (location = 0) out vec2 texCoord;
-void main()
-{
-	gl_Position = vec4(a_pos, 0.0, 1.0);
-	texCoord = vec2(a_texCoord.x, bool(u_flip_y) ? 1.0 - a_texCoord.y : a_texCoord.y);
+layout(location = 0) out vec2 vUV;
+
+void main() {
+    // Vertices sit at (0,0), (2,0), (0,2). The clipped portion is the screen, and UVs land on 0..1.
+    vUV = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
 }

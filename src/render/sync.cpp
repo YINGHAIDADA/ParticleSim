@@ -7,30 +7,35 @@ void Render::createSyncObjects() {
         return;
     }
 
-    m_ImageAvailableSemaphores.resize(m_SwapchainImageCount);
-    m_RenderFinishedSemaphores.resize(m_SwapchainImageCount);
-    // 创建栅栏（初始化为已触发状态）
-    m_InFlightFences.resize(m_SwapchainImageCount);
+    m_ImageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    m_InFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
     vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
 
     vk::SemaphoreCreateInfo semaphoreInfo;
-    for (int i = 0; i < m_SwapchainImageCount; i++) {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         m_ImageAvailableSemaphores[i] = VK_ERROR_CHECK(
             m_LogicalDevice.createSemaphore(semaphoreInfo),
             "Image Available Semaphore creating caused an error");
-        m_RenderFinishedSemaphores[i] = VK_ERROR_CHECK(
-            m_LogicalDevice.createSemaphore(semaphoreInfo),
-            "Render Finished Semaphore creating caused an error");
         m_InFlightFences[i] = VK_ERROR_CHECK(
             m_LogicalDevice.createFence(fenceInfo),
             "In Flight Fence creating caused an error");
     }
-
-    vk::FenceCreateInfo fenceCreateInfo {};
-    fenceCreateInfo.flags = vk::FenceCreateFlagBits::eSignaled;
-
-    // 初始化图像栅栏 (初始化为空) - 关键修改
+    createPresentSemaphores();
     m_ImageInFlight.resize(m_SwapchainImages.size(), vk::Fence());
 
     SPDLOG_INFO("Synchronization objects were created successfully");
+}
+
+void Render::createPresentSemaphores() {
+    for (vk::Semaphore semaphore : m_RenderFinishedSemaphores) {
+        if (semaphore) m_LogicalDevice.destroySemaphore(semaphore);
+    }
+    m_RenderFinishedSemaphores.assign(m_SwapchainImages.size(), vk::Semaphore{});
+
+    vk::SemaphoreCreateInfo semaphoreInfo;
+    for (vk::Semaphore& semaphore : m_RenderFinishedSemaphores) {
+        semaphore = VK_ERROR_CHECK(
+            m_LogicalDevice.createSemaphore(semaphoreInfo),
+            "Render Finished Semaphore creating caused an error");
+    }
 }

@@ -36,9 +36,10 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
     swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
     swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
     swapchainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-    swapchainCreateInfo.presentMode = vk::PresentModeKHR::eMailbox;
+    swapchainCreateInfo.presentMode = vk::PresentModeKHR::eFifo;
     swapchainCreateInfo.clipped = vk::True;
-    swapchainCreateInfo.oldSwapchain = m_Swapchain;
+    const vk::SwapchainKHR oldSwapchain = m_Swapchain;
+    swapchainCreateInfo.oldSwapchain = oldSwapchain;
 
     if (m_QueueGraphicFamilyIndex != m_QueuePresentFamilyIndex) {
         uint32_t queue[2] = {
@@ -59,24 +60,38 @@ void Render::createSwapchain(vk::Extent2D& windowSize) {
         m_LogicalDevice.createSwapchainKHR(swapchainCreateInfo),
         "Swapchain creating caused an error"
     );
+    if (oldSwapchain) {
+        m_LogicalDevice.destroySwapchainKHR(oldSwapchain);
+    }
 
     SPDLOG_INFO("Swapchain was created successfully");
 }
 
 // 重新创建交换链
-void Render::recreateSwapchain(vk::Extent2D& newSize) {
-    // 清理旧资源
-    for (auto& framebuffer : m_FrameBuffers) {
+void Render::destroyFramebuffersAndViews() {
+    for (vk::Framebuffer framebuffer : m_FrameBuffers) {
         m_LogicalDevice.destroyFramebuffer(framebuffer);
     }
     m_FrameBuffers.clear();
-    
-    // 创建新交换链
+    for (vk::ImageView view : m_SwapchainImagesViews) {
+        m_LogicalDevice.destroyImageView(view);
+    }
+    m_SwapchainImagesViews.clear();
+    m_SwapchainImages.clear();
+}
+
+void Render::recreateSwapchain(vk::Extent2D& newSize) {
+    if (!m_LogicalDevice) return;
+    if (newSize.width == 0 || newSize.height == 0) {
+        m_SwapchainExtent = vk::Extent2D{0, 0};
+        return;
+    }
+
+    m_LogicalDevice.waitIdle();
+    destroyFramebuffersAndViews();
     createSwapchain(newSize);
     selectSwapchainResources();
-    createFrameBuffers(newSize);
-
-    // 关键：重置图像栅栏数组
-    m_ImageInFlight.clear();
-    m_ImageInFlight.resize(m_SwapchainImages.size(), vk::Fence());
+    createPresentSemaphores();
+    createFrameBuffers();
+    m_ImageInFlight.assign(m_SwapchainImages.size(), vk::Fence{});
 }
