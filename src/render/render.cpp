@@ -85,7 +85,7 @@ void Render::resize(vk::Extent2D& newWindowSize) {
     }
 }
 
-void Render::draw(std::span<const uint8_t> rgba, int hudPixels, float zoom, float centerU, float centerV) {
+void Render::draw(std::span<const uint8_t> rgba, int hudPixels, int toolbarPixels, float zoom, float centerU, float centerV) {
     if (m_SwapchainExtent.width == 0 || m_SwapchainExtent.height == 0) {
         SDL_Delay(16);
         return;
@@ -149,12 +149,15 @@ void Render::draw(std::span<const uint8_t> rgba, int hudPixels, float zoom, floa
         float zoom;
         float centerU;
         float centerV;
+        float toolbarV;
     };
+    static_assert(sizeof(ViewPush) == sizeof(float) * 5);
     const ViewPush view{
         std::clamp(static_cast<float>(hudPixels) / static_cast<float>(m_TexWidth), 0.f, 1.f),
         std::max(zoom, 0.05f),
         centerU,
         centerV,
+        std::clamp(static_cast<float>(toolbarPixels) / static_cast<float>(std::max(m_TexHeight, 1u)), 0.f, 1.f),
     };
     const std::array<float, 4> black{0.f, 0.f, 0.f, 1.f};
     BloomFrame& bloom = m_Bloom[m_CurrentFrame];

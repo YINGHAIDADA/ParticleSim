@@ -10,6 +10,7 @@ layout(push_constant) uniform PushConstants {
     float panelU;
     float zoom;
     vec2 center;
+    float toolbarV;
 } pc;
 
 vec2 sceneUV(vec2 screenUV) {
@@ -24,17 +25,17 @@ vec2 sceneUV(vec2 screenUV) {
 }
 
 void main() {
-    bool inHud = vUV.x < pc.panelU;
+    bool inChrome = vUV.x < pc.panelU || vUV.y < pc.toolbarV;
     vec2 uv = sceneUV(vUV);
     bool inSim = uv.x >= pc.panelU && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
-    if (!inHud && !inSim) {
+    if (!inChrome && !inSim) {
         outColor = vec4(0.1, 0.1, 0.1, 1.0);
         return;
     }
 
-    vec4 scene = texture(uScene, inHud ? vUV : uv);
+    vec4 scene = texture(uScene, inChrome ? vUV : uv);
     vec3 albedo = mix(vec3(0.1), scene.rgb, scene.a);
-    if (!inHud) {
+    if (!inChrome) {
         vec3 light = texture(uLight, vUV).rgb;
         float heat = clamp(dot(light, vec3(0.6, 0.3, 0.1)) * 4.0, 0.0, 1.6);
         albedo *= vec3(1.0) + heat * vec3(1.2, 0.38, 0.05);

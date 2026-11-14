@@ -219,6 +219,48 @@ void ParticleSimulator::paint(int x, int y, int radius, Material material) {
     discardEmptyChunks();
 }
 
+void ParticleSimulator::paintShape(
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+    ShapeForm form,
+    ShapeStyle style,
+    int stroke,
+    Material material
+) {
+    int minX = 0;
+    int maxX = 0;
+    int minY = 0;
+    int maxY = 0;
+    switch (form) {
+    case ShapeForm::Rect:
+        minX = std::min(x0, x1);
+        maxX = std::max(x0, x1);
+        minY = std::min(y0, y1);
+        maxY = std::max(y0, y1);
+        break;
+    case ShapeForm::Circle: {
+        const int rdx = x1 - x0;
+        const int rdy = y1 - y0;
+        const int reach = int(std::ceil(std::sqrt(double(rdx * rdx + rdy * rdy)) - 1e-9));
+        minX = x0 - reach;
+        maxX = x0 + reach;
+        minY = y0 - reach;
+        maxY = y0 + reach;
+        break;
+    }
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            if (!shapeContains(x, y, x0, y0, x1, y1, form, style, stroke)) continue;
+            setCell(x, y, material);
+        }
+    }
+    discardEmptyChunks();
+}
+
 void ParticleSimulator::materialRgb(Material material, uint8_t& r, uint8_t& g, uint8_t& b) const {
     if (material == Material::Fire) {
         r = 220;
@@ -354,10 +396,11 @@ void ParticleSimulator::seed() {
     const float worldW = float(m_stageRight - m_stageLeft + 1);
     const float worldH = float(m_stageBottom - m_stageTop + 1);
     const float canvasW = float(std::max(m_width - hudWidth(), 1));
+    const float canvasH = float(std::max(m_height - toolbarHeight(), 1));
     m_viewX = (m_stageLeft + m_stageRight) * 0.5f;
     m_viewY = (m_stageTop + m_stageBottom) * 0.5f;
     m_viewZoom = std::clamp(
-        std::min(canvasW / (worldW * 1.45f), float(m_height) / (worldH * 1.45f)),
+        std::min(canvasW / (worldW * 1.45f), canvasH / (worldH * 1.45f)),
         0.2f,
         8.f
     );
@@ -411,8 +454,9 @@ void ParticleSimulator::step() {
     ++m_frame;
     const float zoom = std::max(m_viewZoom, 0.05f);
     const float canvasW = float(std::max(m_width - hudWidth(), 1));
+    const float canvasH = float(std::max(m_height - toolbarHeight(), 1));
     const float halfW = canvasW / zoom * 0.5f;
-    const float halfH = float(std::max(m_height, 1)) / zoom * 0.5f;
+    const float halfH = canvasH / zoom * 0.5f;
     const ChunkKey lo = chunkKey(
         int(std::floor(double(m_viewX - halfW))),
         int(std::floor(double(m_viewY - halfH)))
@@ -490,10 +534,12 @@ void ParticleSimulator::step() {
 
 void ParticleSimulator::publish() {
     const float zoom = std::max(m_viewZoom, 0.05f);
-    const float canvasW = float(std::max(m_width - hudWidth(), 1));
-    const float viewW = canvasW / zoom;
-    const float viewH = float(std::max(m_height, 1)) / zoom;
     const int hud = hudWidth();
+    const int bar = toolbarHeight();
+    const float canvasW = float(std::max(m_width - hud, 1));
+    const float canvasH = float(std::max(m_height - bar, 1));
+    const float viewW = canvasW / zoom;
+    const float viewH = canvasH / zoom;
     const Chunk* cached = nullptr;
     int cacheX = 0;
     int cacheY = 0;
@@ -502,9 +548,9 @@ void ParticleSimulator::publish() {
     for (int py = 0; py < m_height; ++py) {
         for (int px = 0; px < m_width; ++px) {
             Cell cell{};
-            if (px >= hud) {
+            if (px >= hud && py >= bar) {
                 const float localX = (float(px - hud) + 0.5f) / canvasW;
-                const float localY = (float(py) + 0.5f) / float(m_height);
+                const float localY = (float(py - bar) + 0.5f) / canvasH;
                 const int wx = int(std::floor(double(m_viewX) + (double(localX) - 0.5) * double(viewW)));
                 const int wy = int(std::floor(double(m_viewY) + (double(localY) - 0.5) * double(viewH)));
                 const ChunkKey key = chunkKey(wx, wy);

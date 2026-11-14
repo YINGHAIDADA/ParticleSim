@@ -28,6 +28,9 @@ enum class Material : uint8_t {
 
 const char* materialName(Material material);
 
+enum class ShapeForm : uint8_t { Rect, Circle };
+enum class ShapeStyle : uint8_t { Solid, Stroke };
+
 // CPU falling-sand grid. Publishes a straight-alpha RGBA8 buffer for the presenter.
 class ParticleSimulator {
 public:
@@ -35,6 +38,7 @@ public:
 
     void update(float deltaTime);
     void paint(int x, int y, int radius, Material material);
+    void paintShape(int x0, int y0, int x1, int y1, ShapeForm form, ShapeStyle style, int stroke, Material material);
     void clear();
     void publish();
     uint8_t* pixelData() { return m_pixels.data(); }

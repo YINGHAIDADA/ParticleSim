@@ -1,20 +1,21 @@
 #include "Hud.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
+#include <stdexcept>
+#include <string>
 
 namespace {
 
 constexpr int kPanelWidth = 118;
 constexpr int kRowHeight = 18;
-constexpr int kToolTop = 6;
-constexpr int kToolHeight = 16;
-constexpr int kListTop = 28;
-constexpr int kBrushX = 4;
-constexpr int kBrushW = 54;
-constexpr int kHandX = 62;
-constexpr int kHandW = 52;
+constexpr int kListTop = 8;
+constexpr int kToolbarHeight = 22;
+constexpr int kButtonHeight = 18;
+constexpr int kButtonY = 2;
 
 constexpr Material kPalette[] = {
     Material::Sand,
@@ -128,6 +129,93 @@ const uint8_t* hudGlyphRows(char letter) { return glyphRows(letter); }
 
 int hudWidth() { return kPanelWidth; }
 
+int toolbarHeight() { return kToolbarHeight; }
+
+namespace {
+
+struct BarButton {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    ToolbarHit hit = ToolbarHit::Brush;
+    const char* label = "";
+};
+
+int placeButton(BarButton* buttons, int count, int x, ToolbarHit hit, const char* label) {
+    const int width = int(std::strlen(label)) * 6 + 12;
+    buttons[count] = BarButton{x, kButtonY, width, kButtonHeight, hit, label};
+    return x + width + 4;
+}
+
+int toolbarButtons(BarButton* buttons) {
+    int x = kPanelWidth + 6;
+    int count = 0;
+    x = placeButton(buttons, count++, x, ToolbarHit::Brush, "DRAW");
+    x = placeButton(buttons, count++, x, ToolbarHit::Hand, "HAND");
+    x = placeButton(buttons, count++, x, ToolbarHit::Shape, "SHAPE");
+    x += 8;
+    x = placeButton(buttons, count++, x, ToolbarHit::Rect, "RECT");
+    x = placeButton(buttons, count++, x, ToolbarHit::Circle, "CIRCLE");
+    x += 8;
+    x = placeButton(buttons, count++, x, ToolbarHit::Solid, "FILL");
+    placeButton(buttons, count++, x, ToolbarHit::Stroke, "STROKE");
+    return count;
+}
+
+enum class ButtonTone : uint8_t { Idle, Armed, Active };
+
+ButtonTone buttonTone(const BarButton& button, CanvasTool tool, ShapeForm form, ShapeStyle style) {
+    switch (button.hit) {
+    case ToolbarHit::Brush:
+        return tool == CanvasTool::Brush ? ButtonTone::Active : ButtonTone::Idle;
+    case ToolbarHit::Hand:
+        return tool == CanvasTool::Hand ? ButtonTone::Active : ButtonTone::Idle;
+    case ToolbarHit::Shape:
+        return tool == CanvasTool::Shape ? ButtonTone::Active : ButtonTone::Idle;
+    case ToolbarHit::Rect:
+    case ToolbarHit::Circle: {
+        const bool armed = (button.hit == ToolbarHit::Rect && form == ShapeForm::Rect) ||
+            (button.hit == ToolbarHit::Circle && form == ShapeForm::Circle);
+        if (!armed) return ButtonTone::Idle;
+        return tool == CanvasTool::Shape ? ButtonTone::Active : ButtonTone::Armed;
+    }
+    case ToolbarHit::Solid:
+    case ToolbarHit::Stroke: {
+        const bool armed = (button.hit == ToolbarHit::Solid && style == ShapeStyle::Solid) ||
+            (button.hit == ToolbarHit::Stroke && style == ShapeStyle::Stroke);
+        if (!armed) return ButtonTone::Idle;
+        return tool == CanvasTool::Shape ? ButtonTone::Active : ButtonTone::Armed;
+    }
+    }
+    const ToolbarHit unhandled = button.hit;
+    throw std::logic_error("unhandled toolbar hit " + std::to_string(int(unhandled)));
+}
+
+void toneColor(ButtonTone tone, uint8_t& r, uint8_t& g, uint8_t& b) {
+    switch (tone) {
+    case ButtonTone::Idle:
+        r = 28;
+        g = 28;
+        b = 32;
+        return;
+    case ButtonTone::Armed:
+        r = 36;
+        g = 42;
+        b = 52;
+        return;
+    case ButtonTone::Active:
+        r = 42;
+        g = 64;
+        b = 96;
+        return;
+    }
+    const ButtonTone unhandled = tone;
+    throw std::logic_error("unhandled button tone " + std::to_string(int(unhandled)));
+}
+
+}  // namespace
+
 std::optional<Material> hudMaterialAt(int x, int y) {
     if (x < 0 || x >= kPanelWidth || y < kListTop) return std::nullopt;
     const int row = (y - kListTop) / kRowHeight;
@@ -136,24 +224,130 @@ std::optional<Material> hudMaterialAt(int x, int y) {
     return kPalette[row];
 }
 
-std::optional<CanvasTool> hudToolAt(int x, int y) {
-    if (y < kToolTop || y >= kToolTop + kToolHeight) return std::nullopt;
-    if (x >= kBrushX && x < kBrushX + kBrushW) return CanvasTool::Brush;
-    if (x >= kHandX && x < kHandX + kHandW) return CanvasTool::Hand;
+std::optional<ToolbarHit> toolbarAt(int x, int y) {
+    if (x < kPanelWidth || y < 0 || y >= kToolbarHeight) return std::nullopt;
+    BarButton buttons[8];
+    const int count = toolbarButtons(buttons);
+    for (int i = 0; i < count; ++i) {
+        const BarButton& button = buttons[i];
+        if (x >= button.x && x < button.x + button.w && y >= button.y && y < button.y + button.h) {
+            return button.hit;
+        }
+    }
     return std::nullopt;
 }
 
-void drawHud(uint8_t* pixels, int width, int height, const ParticleSimulator& simulation, float fps, CanvasTool tool) {
+bool shapeContains(int x, int y, int x0, int y0, int x1, int y1, ShapeForm form, ShapeStyle style, int stroke) {
+    const int width = std::max(stroke, 1);
+    switch (form) {
+    case ShapeForm::Rect: {
+        const int minX = std::min(x0, x1);
+        const int maxX = std::max(x0, x1);
+        const int minY = std::min(y0, y1);
+        const int maxY = std::max(y0, y1);
+        if (x < minX || x > maxX || y < minY || y > maxY) return false;
+        switch (style) {
+        case ShapeStyle::Solid:
+            return true;
+        case ShapeStyle::Stroke:
+            return x < minX + width || x > maxX - width || y < minY + width || y > maxY - width;
+        }
+        const ShapeStyle unhandled = style;
+        throw std::logic_error("unhandled shape style " + std::to_string(int(unhandled)));
+    }
+    case ShapeForm::Circle: {
+        const int dx = x - x0;
+        const int dy = y - y0;
+        const int rdx = x1 - x0;
+        const int rdy = y1 - y0;
+        const int radiusSq = rdx * rdx + rdy * rdy;
+        const int distSq = dx * dx + dy * dy;
+        if (distSq > radiusSq) return false;
+        const int inner = int(std::lround(std::sqrt(double(radiusSq)))) - width;
+        switch (style) {
+        case ShapeStyle::Solid:
+            return true;
+        case ShapeStyle::Stroke:
+            if (inner <= 0) return true;
+            return distSq >= inner * inner;
+        }
+        const ShapeStyle unhandled = style;
+        throw std::logic_error("unhandled shape style " + std::to_string(int(unhandled)));
+    }
+    }
+    const ShapeForm unhandled = form;
+    throw std::logic_error("unhandled shape form " + std::to_string(int(unhandled)));
+}
+
+void drawShapePreview(
+    uint8_t* pixels,
+    int width,
+    int height,
+    float centerX,
+    float centerY,
+    float zoom,
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+    ShapeForm form,
+    ShapeStyle style,
+    int stroke,
+    uint8_t red,
+    uint8_t green,
+    uint8_t blue
+) {
+    const int hud = hudWidth();
+    const int bar = toolbarHeight();
+    const float canvasW = float(std::max(width - hud, 1));
+    const float canvasH = float(std::max(height - bar, 1));
+    const float viewW = canvasW / std::max(zoom, 0.05f);
+    const float viewH = canvasH / std::max(zoom, 0.05f);
+    constexpr int kMix = 150;
+    for (int py = bar; py < height; ++py) {
+        for (int px = hud; px < width; ++px) {
+            const float localX = (float(px - hud) + 0.5f) / canvasW;
+            const float localY = (float(py - bar) + 0.5f) / canvasH;
+            const int wx = int(std::floor(double(centerX) + (double(localX) - 0.5) * double(viewW)));
+            const int wy = int(std::floor(double(centerY) + (double(localY) - 0.5) * double(viewH)));
+            if (!shapeContains(wx, wy, x0, y0, x1, y1, form, style, stroke)) continue;
+            uint8_t* pixel = pixels + (static_cast<size_t>(py) * static_cast<size_t>(width) + static_cast<size_t>(px)) * 4;
+            pixel[0] = uint8_t((int(pixel[0]) * (255 - kMix) + int(red) * kMix) / 255);
+            pixel[1] = uint8_t((int(pixel[1]) * (255 - kMix) + int(green) * kMix) / 255);
+            pixel[2] = uint8_t((int(pixel[2]) * (255 - kMix) + int(blue) * kMix) / 255);
+            pixel[3] = 255;
+        }
+    }
+}
+
+void drawHud(
+    uint8_t* pixels,
+    int width,
+    int height,
+    const ParticleSimulator& simulation,
+    float fps,
+    CanvasTool tool,
+    ShapeForm form,
+    ShapeStyle style
+) {
     if (width < kPanelWidth || height < 32) return;
 
     fillRect(pixels, width, height, 0, 0, kPanelWidth, height, 16, 16, 18, 255);
+    fillRect(pixels, width, height, kPanelWidth, 0, width - kPanelWidth, kToolbarHeight, 16, 16, 18, 255);
 
-    const auto toolButton = [&](int x, int w, bool selected, const char* label) {
-        fillRect(pixels, width, height, x, kToolTop, w, kToolHeight, selected ? 48 : 28, selected ? 48 : 28, selected ? 54 : 32, 255);
-        drawText(pixels, width, height, x + 15, kToolTop + 4, label);
-    };
-    toolButton(kBrushX, kBrushW, tool == CanvasTool::Brush, "DRAW");
-    toolButton(kHandX, kHandW, tool == CanvasTool::Hand, "HAND");
+    BarButton buttons[8];
+    const int count = toolbarButtons(buttons);
+    for (int i = 0; i < count; ++i) {
+        const BarButton& button = buttons[i];
+        uint8_t r = 0;
+        uint8_t g = 0;
+        uint8_t b = 0;
+        toneColor(buttonTone(button, tool, form, style), r, g, b);
+        fillRect(pixels, width, height, button.x, button.y, button.w, button.h, r, g, b, 255);
+        const int chars = int(std::strlen(button.label));
+        const int textW = chars * 6 - 1;
+        drawText(pixels, width, height, button.x + std::max((button.w - textW) / 2, 2), button.y + 5, button.label);
+    }
 
     for (int i = 0; i < static_cast<int>(std::size(kPalette)); ++i) {
         const int y = kListTop + i * kRowHeight;

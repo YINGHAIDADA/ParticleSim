@@ -8,6 +8,7 @@ layout(push_constant) uniform PushConstants {
     float panelU;
     float zoom;
     vec2 center;
+    float toolbarV;
 } pc;
 
 vec2 sceneUV(vec2 screenUV) {
@@ -24,7 +25,7 @@ vec2 sceneUV(vec2 screenUV) {
 void main() {
     outColor = vec4(0.0, 0.0, 0.0, 1.0);
     vec2 uv = sceneUV(vUV);
-    if (vUV.x < pc.panelU || uv.x < pc.panelU || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    if (vUV.x < pc.panelU || vUV.y < pc.toolbarV || uv.x < pc.panelU || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return;
     }
 
