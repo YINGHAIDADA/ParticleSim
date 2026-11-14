@@ -613,7 +613,7 @@ void ParticleSimulator::publish() {
             g = std::clamp(206 + flicker / 3, 0, 255);
             b = 62;
             if (cell.life > 0) {
-                const int charred = std::min(int(cell.life) * 180 / 120, 180);
+                const int charred = std::min(int(cell.life) * 180 / 54, 180);
                 r = std::min(255, r + charred);
                 g = std::max(0, g - charred / 3);
                 b = std::max(0, b - charred / 2);
@@ -626,7 +626,7 @@ void ParticleSimulator::publish() {
         } else if (cell.id == Material::Glass) {
             alpha = 100 + int(cell.shade % 36);
         } else if ((cell.id == Material::Wood || cell.id == Material::Plant) && cell.life > 0) {
-            const int scale = cell.id == Material::Plant ? 120 : 96;
+            const int scale = cell.id == Material::Plant ? 54 : 36;
             const int charred = std::min(int(cell.life) * 180 / scale, 180);
             r = std::min(255, r + charred);
             g = std::max(0, g - charred / 3);
@@ -1039,9 +1039,17 @@ void ParticleSimulator::spawn(int x, int y, Material material, uint8_t life) {
 }
 
 void ParticleSimulator::moveFire(int x, int y) {
+    const bool feeding = peek(x, y).life > 100;
     if ((rnd() % 20u) == 0) {
         const int spark = (rnd() & 1u) ? 1 : -1;
         spawn(x + spark, y - 1, Material::Ember, uint8_t(16 + (rnd() % 18u)));
+    }
+    if (feeding) {
+        if ((rnd() & 3u) == 0) {
+            const int direction = (rnd() & 1u) ? 1 : -1;
+            trySwap(x, y, x + direction, y);
+        }
+        return;
     }
     if ((rnd() % 3u) != 0 && inBounds(x, y - 2) &&
         peek(x, y - 1).id == Material::Empty &&
@@ -1226,8 +1234,8 @@ int ParticleSimulator::smolderDelay(int x, int y) const {
         if (!neighborAt(x, y, i, nx, ny)) continue;
         const Cell& other = at(nx, ny);
         if (other.id == Material::Lava) return 1;
-        if (other.id == Material::Fire) return 2;
-        if (other.id == Material::Ember) return 3;
+        if (other.id == Material::Fire) return 1;
+        if (other.id == Material::Ember) return 2;
     }
 
     int closest = 7;
@@ -1254,21 +1262,21 @@ int ParticleSimulator::smolderDelay(int x, int y) const {
 bool ParticleSimulator::smolder(int x, int y) {
     Cell& self = at(x, y);
     const bool plant = self.id == Material::Plant;
-    const int ignite = plant ? 120 : 96;
+    const int ignite = plant ? 54 : 36;
     const int delay = smolderDelay(x, y);
     if (delay <= 0) {
         if (self.life > 0 && (m_frame & 7u) == 0) --self.life;
         return false;
     }
 
-    const int period = std::max(1, plant ? delay + 1 : delay);
+    const int period = std::max(1, plant && delay > 1 ? delay + 1 : delay);
     if ((m_frame % uint32_t(period)) != 0) return false;
     if (self.life < ignite) ++self.life;
-    if (self.life * 2 >= ignite && self.life < ignite && (rnd() % 5u) == 0) {
+    if (self.life * 2 >= ignite && self.life < ignite && (rnd() % 4u) == 0) {
         spawn(x, y - 1, Material::Smoke, uint8_t(28 + (rnd() % 20u)));
     }
-    if (self.life >= ignite && (rnd() & 3u) == 0) {
-        become(self, x, y, Material::Fire, uint8_t(80 + (rnd() % 40u)));
+    if (self.life >= ignite) {
+        become(self, x, y, Material::Fire, uint8_t(170 + (rnd() % 40u)));
         spawn(x, y - 1, Material::Smoke, uint8_t(40 + (rnd() % 30u)));
         spawn(x + ((rnd() & 1u) ? 1 : -1), y - 1, Material::Ember, uint8_t(16 + (rnd() % 12u)));
         return true;
@@ -1364,19 +1372,18 @@ void ParticleSimulator::explode(int cx, int cy) {
 }
 
 bool ParticleSimulator::rooted(int x, int y) const {
-    for (int dx = -1; dx <= 1; ++dx) {
-        const int nx = x + dx;
-        const int ny = y + 1;
-        if (!inBounds(nx, ny)) continue;
-        switch (at(nx, ny).id) {
-        case Material::Plant:
+    auto holds = [](const Cell& cell, bool lateral) {
+        switch (cell.id) {
         case Material::Wood:
+            return true;
+        case Material::Plant:
+            return cell.shade < 200;
         case Material::Stone:
         case Material::Glass:
         case Material::Sand:
         case Material::Salt:
         case Material::Water:
-            return true;
+            return !lateral;
         case Material::Empty:
         case Material::Fire:
         case Material::Smoke:
@@ -1387,17 +1394,21 @@ bool ParticleSimulator::rooted(int x, int y) const {
         case Material::Lava:
         case Material::Acid:
         case Material::Count:
-            break;
-        default: {
-            const Material unhandled = at(nx, ny).id;
-            throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+            return false;
         }
-        }
+        const Material unhandled = cell.id;
+        throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+    };
+
+    for (int dx = -1; dx <= 1; ++dx) {
+        const int nx = x + dx;
+        const int ny = y + 1;
+        if (!inBounds(nx, ny)) continue;
+        if (holds(at(nx, ny), false)) return true;
     }
     for (int dx = -1; dx <= 1; dx += 2) {
         if (!inBounds(x + dx, y)) continue;
-        const Material side = at(x + dx, y).id;
-        if (side == Material::Plant || side == Material::Wood) return true;
+        if (holds(at(x + dx, y), true)) return true;
     }
     return false;
 }
