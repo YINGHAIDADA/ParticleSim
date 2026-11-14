@@ -34,6 +34,7 @@ constexpr MaterialInfo kMaterials[] = {
     {Phase::Static, 9, 120, 110, 120, 255, 8},
     {Phase::Liquid, 3, 90, 200, 60, 200, 8},
     {Phase::Static, 9, 46, 150, 42, 255, 20},
+    {Phase::Static, 9, 214, 232, 242, 120, 8},
 };
 
 static_assert(std::size(kMaterials) == static_cast<size_t>(Material::Count));
@@ -71,6 +72,7 @@ bool flungByBlast(Material material, bool liquidsOnly) {
     case Material::Steam:
     case Material::Stone:
     case Material::Plant:
+    case Material::Glass:
     case Material::Count:
         return false;
     }
@@ -96,6 +98,7 @@ bool dissolves(Material material) {
     case Material::Lava:
     case Material::Stone:
     case Material::Acid:
+    case Material::Glass:
     case Material::Count:
         return false;
     }
@@ -124,6 +127,7 @@ uint8_t lifeFor(Material material, uint32_t noise) {
     case Material::Stone:
     case Material::Acid:
     case Material::Plant:
+    case Material::Glass:
     case Material::Count:
         return 0;
     }
@@ -149,6 +153,7 @@ bool usesLife(Material material) {
     case Material::Stone:
     case Material::Acid:
     case Material::Plant:
+    case Material::Glass:
     case Material::Count:
         return false;
     }
@@ -175,6 +180,7 @@ const char* materialName(Material material) {
     case Material::Stone: return "Stone";
     case Material::Acid: return "Acid";
     case Material::Plant: return "Plant";
+    case Material::Glass: return "Glass";
     case Material::Count: return "Unknown";
     }
     const Material unhandled = material;
@@ -429,8 +435,26 @@ void ParticleSimulator::publish() {
             g = 238;
             b = 255;
             alpha = std::clamp(30 + int(cell.life), 0, 200);
+        } else if (cell.id == Material::Plant && cell.shade >= 200) {
+            r = 118;
+            g = std::clamp(206 + flicker / 3, 0, 255);
+            b = 62;
+            if (cell.life > 0) {
+                const int charred = std::min(int(cell.life) * 180 / 120, 180);
+                r = std::min(255, r + charred);
+                g = std::max(0, g - charred / 3);
+                b = std::max(0, b - charred / 2);
+            }
+        } else if (cell.id == Material::Sand && cell.life > 0) {
+            const int bake = std::min(int(cell.life), 120);
+            r = r + (230 - r) * bake / 120;
+            g = g + (242 - g) * bake / 120;
+            b = b + (248 - b) * bake / 120;
+        } else if (cell.id == Material::Glass) {
+            alpha = 100 + int(cell.shade % 36);
         } else if ((cell.id == Material::Wood || cell.id == Material::Plant) && cell.life > 0) {
-            const int charred = std::min(int(cell.life) * 4, 180);
+            const int scale = cell.id == Material::Plant ? 120 : 96;
+            const int charred = std::min(int(cell.life) * 180 / scale, 180);
             r = std::min(255, r + charred);
             g = std::max(0, g - charred / 3);
             b = std::max(0, b - charred / 2);
@@ -442,14 +466,19 @@ void ParticleSimulator::publish() {
         } else if (cell.id == Material::Salt && cell.life > 0) {
             alpha = std::max(40, 255 - int(cell.life) * 40);
         } else if (cell.id == Material::Water && cell.life > 0) {
-            const int cloud = std::min(int(cell.life), 80);
-            r = r + (210 - r) * cloud / 120;
-            g = g + (216 - g) * cloud / 120;
-            b = b + (220 - b) * cloud / 120;
+            const int cloud = std::min(int(cell.life), 120);
+            r = r + (232 - r) * cloud / 120;
+            g = g + (238 - g) * cloud / 120;
+            b = b + (255 - b) * cloud / 120;
         } else if (cell.id == Material::Acid && cell.life > 0) {
             const int stain = std::min(int(cell.life), 40);
             r = r + (int(cell.shade) - r) * stain / 80;
             g = g + (80 - g) * stain / 160;
+        } else if (cell.id == Material::Stone && cell.life > 0) {
+            const int heat = std::min(int(cell.life), 220);
+            r = r + (255 - r) * heat / 220;
+            g = g + (90 - g) * heat / 280;
+            b = b * (220 - heat) / 220;
         } else if (cell.id == Material::Lava) {
             g = std::clamp(g + flicker, 20, 120);
             r = 255;
@@ -481,7 +510,7 @@ void ParticleSimulator::fill(int cx, int cy, int radius, Material material) {
 void ParticleSimulator::setCell(int x, int y, Material material) {
     Cell& cell = m_cells[index(x, y)];
     cell.id = material;
-    cell.shade = uint8_t(rnd() & 255u);
+    cell.shade = material == Material::Plant ? uint8_t(rnd() % 150u) : uint8_t(rnd() & 255u);
     cell.updated = 0;
     cell.life = lifeFor(material, rnd());
 }
@@ -547,7 +576,10 @@ void ParticleSimulator::updateCell(int x, int y) {
 
 bool ParticleSimulator::react(int x, int y) {
     Cell& self = m_cells[index(x, y)];
-    if (self.id == Material::Water && self.life > 0 && (m_frame & 3u) == 0) {
+    if (self.id == Material::Water && self.life > 0 && (m_frame & 7u) == 0) {
+        --self.life;
+    }
+    if (self.id == Material::Sand && self.life > 0 && (m_frame & 3u) == 0) {
         --self.life;
     }
     if (self.id == Material::Acid && self.life > 0 && (rnd() & 3u) == 0) {
@@ -555,11 +587,23 @@ bool ParticleSimulator::react(int x, int y) {
     }
 
     if (self.id == Material::Steam && self.life <= 24) {
-        for (int i = 0; i < 4; ++i) {
-            int nx = 0;
-            int ny = 0;
-            if (!neighborAt(x, y, i, nx, ny)) continue;
-            if (m_cells[index(nx, ny)].id != Material::Stone) continue;
+        int mates[2] = {};
+        int found = 0;
+        for (int dy = -1; dy <= 1 && found < 2; ++dy) {
+            for (int dx = -1; dx <= 1 && found < 2; ++dx) {
+                if (dx == 0 && dy == 0) continue;
+                const int nx = x + dx;
+                const int ny = y + dy;
+                if (!inBounds(nx, ny)) continue;
+                const int ni = index(nx, ny);
+                const Cell& other = m_cells[ni];
+                if (other.id != Material::Steam || other.life > 24) continue;
+                mates[found++] = ni;
+            }
+        }
+        if (found == 2) {
+            become(m_cells[mates[0]], Material::Empty, 0);
+            become(m_cells[mates[1]], Material::Empty, 0);
             become(self, Material::Water, 0);
             return true;
         }
@@ -571,8 +615,6 @@ bool ParticleSimulator::react(int x, int y) {
                 become(self, Material::Smoke, uint8_t(50 + (rnd() % 50u)));
             } else if (self.id == Material::Ember && (rnd() & 1u) == 0) {
                 become(self, Material::Smoke, uint8_t(30 + (rnd() % 30u)));
-            } else if (self.id == Material::Steam && (rnd() % 3u) == 0) {
-                become(self, Material::Water, 0);
             } else {
                 become(self, Material::Empty, 0);
             }
@@ -583,6 +625,11 @@ bool ParticleSimulator::react(int x, int y) {
             become(self, Material::Ember, uint8_t(24 + (rnd() % 20u)));
             return true;
         }
+    }
+
+    if (self.id == Material::Stone && self.life > 0) {
+        if ((m_frame & 1u) == 0 && self.life > 0) --self.life;
+        radiate(x, y, std::max(1, int(self.life) / 40), 5);
     }
 
     if (self.id == Material::Water) {
@@ -597,7 +644,7 @@ bool ParticleSimulator::react(int x, int y) {
                 spawn(x - 1, y - 1, Material::Steam, uint8_t(60 + (rnd() % 30u)));
                 spawn(x + 1, y - 1, Material::Steam, uint8_t(60 + (rnd() % 30u)));
                 spawn(x, y - 2, Material::Steam, uint8_t(40 + (rnd() % 20u)));
-                become(other, Material::Stone, 0);
+                become(other, Material::Stone, 220);
                 spawn(nx - 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
                 spawn(nx + 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
                 shove(x, y, 3, 4, 1, true);
@@ -611,6 +658,15 @@ bool ParticleSimulator::react(int x, int y) {
                 spawn(nx, ny - 1, Material::Ember, uint8_t(18 + (rnd() % 12u)));
                 return true;
             }
+        }
+        const int closest = nearestHeat(x, y);
+        if (closest <= 6 && (m_frame % uint32_t(std::max(1, closest - 1))) == 0 && self.life < 120) {
+            ++self.life;
+        }
+        if (self.life >= 120) {
+            become(self, Material::Steam, uint8_t(70 + (rnd() % 40u)));
+            spawn(x, y - 1, Material::Steam, uint8_t(36 + (rnd() % 24u)));
+            return true;
         }
     }
 
@@ -649,20 +705,37 @@ bool ParticleSimulator::react(int x, int y) {
         }
     }
 
-    if (self.id == Material::Wood && self.life == 0) {
-        const bool waterAbove = inBounds(x, y - 1) &&
-            m_cells[index(x, y - 1)].id == Material::Water &&
-            m_cells[index(x, y - 1)].life == 0;
-        const uint32_t odds = waterAbove ? 8u : 160u;
-        if ((rnd() % odds) == 0) sproutAbove(x, y, false);
+    if (self.id == Material::Wood) {
+        if (smolder(x, y)) return true;
+    }
+
+    if (self.id == Material::Wood && self.life == 0 && y > 0) {
+        Cell& above = m_cells[index(x, y - 1)];
+        if (above.id == Material::Water && above.life == 0 && (rnd() % 10u) == 0) {
+            become(above, Material::Plant, 0);
+            above.shade = uint8_t(52 + (rnd() % 36u));
+        } else if (above.id == Material::Empty && (rnd() % 28u) == 0 && drinkFromRoot(x, y)) {
+            become(above, Material::Plant, 0);
+            const int heading = int(rnd() % 3u) - 1;
+            const uint32_t jitter = rnd() % 36u;
+            if (heading < 0) above.shade = uint8_t(jitter);
+            else if (heading > 0) above.shade = uint8_t(114 + jitter);
+            else above.shade = uint8_t(52 + jitter);
+        }
     }
 
     if (self.id == Material::Plant) {
-        if (self.life > 0) --self.life;
-        if (self.life == 0 && rooted(x, y) && (rnd() % 18u) == 0) sproutAbove(x, y, true);
-        if (self.life == 0 && inBounds(x, y - 1) &&
-            m_cells[index(x, y - 1)].id == Material::Plant && (rnd() % 36u) == 0) {
-            become(self, Material::Wood, 0);
+        if (smolder(x, y)) return true;
+        const bool leaf = self.shade >= 200;
+        const bool tip = y == 0 ||
+            (m_cells[index(x, y - 1)].id != Material::Plant &&
+             m_cells[index(x, y - 1)].id != Material::Wood);
+        if (!leaf && self.life == 0 && tip && rooted(x, y) && (rnd() % 10u) == 0) growTree(x, y);
+        if (!leaf && self.life == 0 && y > 0) {
+            const Material above = m_cells[index(x, y - 1)].id;
+            if ((above == Material::Plant || above == Material::Wood) && (rnd() % 18u) == 0) {
+                become(self, Material::Wood, 0);
+            }
         }
     }
 
@@ -676,11 +749,6 @@ bool ParticleSimulator::react(int x, int y) {
             if (other.id == Material::Gunpowder) {
                 explode(nx, ny);
                 return true;
-            }
-            if (other.id == Material::Plant || other.id == Material::Wood) {
-                become(other, Material::Fire, uint8_t(90 + (rnd() % 40u)));
-                spawn(nx, ny - 1, Material::Smoke, uint8_t(30 + (rnd() % 24u)));
-                break;
             }
             if (other.id == Material::Oil) {
                 become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
@@ -701,21 +769,7 @@ bool ParticleSimulator::react(int x, int y) {
                 explode(nx, ny);
                 return true;
             }
-            if (other.id == Material::Plant) {
-                other.life = uint8_t(std::min(255, int(other.life) + heat * 2));
-                if (other.life >= 8 && (rnd() & 1u) == 0) {
-                    become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
-                    spawn(nx, ny - 1, Material::Ember, uint8_t(18 + (rnd() % 14u)));
-                    spawn(nx + ((rnd() & 1u) ? 1 : -1), ny - 1, Material::Smoke, uint8_t(24 + (rnd() % 20u)));
-                }
-            } else if (other.id == Material::Wood) {
-                other.life = uint8_t(std::min(255, int(other.life) + heat));
-                if (other.life >= 16 && (rnd() & 1u) == 0) {
-                    become(other, Material::Fire, uint8_t(90 + (rnd() % 40u)));
-                    spawn(nx, ny - 1, Material::Ember, uint8_t(22 + (rnd() % 16u)));
-                    spawn(nx + ((rnd() & 1u) ? 1 : -1), ny - 1, Material::Smoke, uint8_t(40 + (rnd() % 30u)));
-                }
-            } else if (other.id == Material::Oil) {
+            if (other.id == Material::Oil) {
                 other.life = uint8_t(std::min(255, int(other.life) + heat * 6));
                 if (other.life >= 48) {
                     become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
@@ -723,6 +777,20 @@ bool ParticleSimulator::react(int x, int y) {
                     spawn(nx, ny - 2, Material::Ember, uint8_t(18 + (rnd() % 14u)));
                 }
             }
+        }
+        if (self.id == Material::Lava) radiate(x, y, 6, 6);
+        else radiate(x, y, 3, 4);
+    }
+
+    if (self.id == Material::Glass) {
+        for (int i = 0; i < 4; ++i) {
+            int nx = 0;
+            int ny = 0;
+            if (!neighborAt(x, y, i, nx, ny)) continue;
+            const Cell& water = m_cells[index(nx, ny)];
+            if (water.id != Material::Water || water.life != 0) continue;
+            quench(x, y);
+            return true;
         }
     }
 
@@ -812,6 +880,13 @@ void ParticleSimulator::moveSmoke(int x, int y) {
 
 void ParticleSimulator::moveSteam(int x, int y) {
     const int direction = (rnd() & 1u) ? 1 : -1;
+    if (m_cells[index(x, y)].life <= 24) {
+        if (drop(x, y, 2)) return;
+        if (trySwap(x, y, x + direction, y + 1)) return;
+        if (trySwap(x, y, x - direction, y + 1)) return;
+        trySwap(x, y, x + direction, y);
+        return;
+    }
     if (inBounds(x, y - 2) &&
         m_cells[index(x, y - 1)].id == Material::Empty &&
         m_cells[index(x, y - 2)].id == Material::Empty &&
@@ -927,8 +1002,145 @@ bool ParticleSimulator::nudge(int& x, int& y, int cx, int cy, int lift, int dist
     return true;
 }
 
+int ParticleSimulator::nearestHeat(int x, int y) const {
+    int closest = 7;
+    for (int dy = -6; dy <= 6; ++dy) {
+        for (int dx = -6; dx <= 6; ++dx) {
+            const int dist = std::max(std::abs(dx), std::abs(dy));
+            if (dist == 0 || dist >= closest) continue;
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if (!inBounds(nx, ny)) continue;
+            const Cell& other = m_cells[index(nx, ny)];
+            int reach = 0;
+            if (other.id == Material::Lava) reach = 6;
+            else if (other.id == Material::Fire) reach = 4;
+            else if (other.id == Material::Stone && other.life > 0) {
+                if (other.life >= 120) reach = 5;
+                else if (other.life >= 60) reach = 3;
+                else reach = 1;
+            }
+            if (dist <= reach) closest = dist;
+        }
+    }
+    return closest;
+}
+
+int ParticleSimulator::smolderDelay(int x, int y) const {
+    for (int i = 0; i < 4; ++i) {
+        int nx = 0;
+        int ny = 0;
+        if (!neighborAt(x, y, i, nx, ny)) continue;
+        const Cell& other = m_cells[index(nx, ny)];
+        if (other.id == Material::Lava) return 1;
+        if (other.id == Material::Fire) return 2;
+        if (other.id == Material::Ember) return 3;
+    }
+
+    int closest = 7;
+    for (int dy = -6; dy <= 6; ++dy) {
+        for (int dx = -6; dx <= 6; ++dx) {
+            const int dist = std::max(std::abs(dx), std::abs(dy));
+            if (dist == 0 || dist >= closest) continue;
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if (!inBounds(nx, ny)) continue;
+            const Cell& other = m_cells[index(nx, ny)];
+            int reach = 0;
+            if (other.id == Material::Lava) reach = 6;
+            else if (other.id == Material::Fire) reach = 4;
+            else if (other.id == Material::Ember) reach = 2;
+            else if (other.id == Material::Stone && other.life >= 60) reach = 4;
+            if (dist <= reach) closest = dist;
+        }
+    }
+    if (closest > 6) return 0;
+    return 2 + closest;
+}
+
+bool ParticleSimulator::smolder(int x, int y) {
+    Cell& self = m_cells[index(x, y)];
+    const bool plant = self.id == Material::Plant;
+    const int ignite = plant ? 120 : 96;
+    const int delay = smolderDelay(x, y);
+    if (delay <= 0) {
+        if (self.life > 0 && (m_frame & 7u) == 0) --self.life;
+        return false;
+    }
+
+    const int period = std::max(1, plant ? delay + 1 : delay);
+    if ((m_frame % uint32_t(period)) != 0) return false;
+    if (self.life < ignite) ++self.life;
+    if (self.life * 2 >= ignite && self.life < ignite && (rnd() % 5u) == 0) {
+        spawn(x, y - 1, Material::Smoke, uint8_t(28 + (rnd() % 20u)));
+    }
+    if (self.life >= ignite && (rnd() & 3u) == 0) {
+        become(self, Material::Fire, uint8_t(80 + (rnd() % 40u)));
+        spawn(x, y - 1, Material::Smoke, uint8_t(40 + (rnd() % 30u)));
+        spawn(x + ((rnd() & 1u) ? 1 : -1), y - 1, Material::Ember, uint8_t(16 + (rnd() % 12u)));
+        return true;
+    }
+    return false;
+}
+
+void ParticleSimulator::radiate(int x, int y, int power, int reach) {
+    if (power < 1 || reach < 1) return;
+    constexpr int kBake = 120;
+    for (int dy = -reach; dy <= reach; ++dy) {
+        for (int dx = -reach; dx <= reach; ++dx) {
+            const int dist = std::max(std::abs(dx), std::abs(dy));
+            if (dist == 0 || dist > reach) continue;
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if (!inBounds(nx, ny)) continue;
+            Cell& other = m_cells[index(nx, ny)];
+            const int gain = std::max(1, power - dist + 1);
+            if (other.id == Material::Sand) {
+                other.life = uint8_t(std::min(255, int(other.life) + gain));
+                if (other.life >= kBake) become(other, Material::Glass, 0);
+            } else if (other.id == Material::Oil && dist > 1) {
+                other.life = uint8_t(std::min(255, int(other.life) + gain));
+                if (other.life >= 48) {
+                    become(other, Material::Fire, uint8_t(70 + (rnd() % 30u)));
+                    spawn(nx, ny - 1, Material::Smoke, uint8_t(50 + (rnd() % 30u)));
+                }
+            } else if (other.id == Material::Gunpowder) {
+                other.life = uint8_t(std::min(255, int(other.life) + std::max(1, gain / 2)));
+                if (other.life >= 80) {
+                    explode(nx, ny);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void ParticleSimulator::quench(int x, int y) {
+    constexpr int kCrack = 2;
+    for (int dy = -kCrack; dy <= kCrack; ++dy) {
+        for (int dx = -kCrack; dx <= kCrack; ++dx) {
+            if (std::max(std::abs(dx), std::abs(dy)) > kCrack) continue;
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if (!inBounds(nx, ny)) continue;
+            Cell& cell = m_cells[index(nx, ny)];
+            if (cell.id == Material::Glass) become(cell, Material::Sand, 0);
+        }
+    }
+    shove(x, y, 5, 4, 5, false);
+}
+
 void ParticleSimulator::explode(int cx, int cy) {
     constexpr int kRadius = 4;
+    constexpr int kBreak = 6;
+    for (int y = cy - kBreak; y <= cy + kBreak; ++y) {
+        for (int x = cx - kBreak; x <= cx + kBreak; ++x) {
+            if (!inBounds(x, y)) continue;
+            if (std::max(std::abs(x - cx), std::abs(y - cy)) > kBreak) continue;
+            Cell& cell = m_cells[index(x, y)];
+            if (cell.id == Material::Glass) become(cell, Material::Sand, 0);
+        }
+    }
     shove(cx, cy, 16, 9, 12, false);
     for (int y = cy - kRadius; y <= cy + kRadius; ++y) {
         for (int x = cx - kRadius; x <= cx + kRadius; ++x) {
@@ -962,6 +1174,7 @@ bool ParticleSimulator::rooted(int x, int y) const {
         case Material::Plant:
         case Material::Wood:
         case Material::Stone:
+        case Material::Glass:
         case Material::Sand:
         case Material::Salt:
         case Material::Water:
@@ -983,48 +1196,122 @@ bool ParticleSimulator::rooted(int x, int y) const {
         }
         }
     }
-    return false;
-}
-
-bool ParticleSimulator::drinkWater(int x, int y) {
-    constexpr int kOrder[] = {3, 0, 1, 2};
-    for (int direction : kOrder) {
-        int nx = 0;
-        int ny = 0;
-        if (!neighborAt(x, y, direction, nx, ny)) continue;
-        Cell& other = m_cells[index(nx, ny)];
-        if (other.id != Material::Water || other.life != 0) continue;
-        become(other, Material::Empty, 0);
-        return true;
+    for (int dx = -1; dx <= 1; dx += 2) {
+        if (!inBounds(x + dx, y)) continue;
+        const Material side = m_cells[index(x + dx, y)].id;
+        if (side == Material::Plant || side == Material::Wood) return true;
     }
     return false;
 }
 
-bool ParticleSimulator::sproutAbove(int x, int y, bool branch) {
-    if (y - 1 < 0) return false;
-    Cell& above = m_cells[index(x, y - 1)];
-    if (above.id == Material::Water && above.life == 0) {
-        become(above, Material::Plant, 0);
-        return true;
+bool ParticleSimulator::drinkFromRoot(int x, int y) {
+    int cx = x;
+    int cy = y;
+    for (int step = 0; step < 64; ++step) {
+        int nextX = cx;
+        int nextY = cy;
+        bool found = false;
+        if (inBounds(cx, cy + 1)) {
+            const Material below = m_cells[index(cx, cy + 1)].id;
+            if (below == Material::Plant || below == Material::Wood) {
+                nextX = cx;
+                nextY = cy + 1;
+                found = true;
+            }
+        }
+        if (!found) {
+            for (int dx = -1; dx <= 1 && !found; dx += 2) {
+                if (!inBounds(cx + dx, cy + 1)) continue;
+                const Material below = m_cells[index(cx + dx, cy + 1)].id;
+                if (below != Material::Plant && below != Material::Wood) continue;
+                nextX = cx + dx;
+                nextY = cy + 1;
+                found = true;
+            }
+        }
+        if (!found) break;
+        cx = nextX;
+        cy = nextY;
     }
-    if (above.id == Material::Empty) {
-        if (!drinkWater(x, y)) return false;
-        become(m_cells[index(x, y - 1)], Material::Plant, 0);
-        return true;
-    }
-    if (!branch) return false;
 
-    const int dx = (rnd() & 1u) ? 1 : -1;
-    const int offsets[2][2] = {{dx, -1}, {dx, 0}};
-    for (const int (&offset)[2] : offsets) {
-        const int tx = x + offset[0];
-        const int ty = y + offset[1];
-        if (!inBounds(tx, ty) || m_cells[index(tx, ty)].id != Material::Empty) continue;
-        if (!drinkWater(x, y)) return false;
-        become(m_cells[index(tx, ty)], Material::Plant, 0);
-        return true;
+    constexpr int kRoot = 5;
+    for (int radius = 1; radius <= kRoot; ++radius) {
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) != radius) continue;
+                const int nx = cx + dx;
+                const int ny = cy + dy;
+                if (!inBounds(nx, ny)) continue;
+                Cell& water = m_cells[index(nx, ny)];
+                if (water.id != Material::Water || water.life != 0) continue;
+                become(water, Material::Empty, 0);
+                return true;
+            }
+        }
     }
     return false;
+}
+
+bool ParticleSimulator::growTree(int x, int y) {
+    const Cell& self = m_cells[index(x, y)];
+    if (self.shade >= 200) return false;
+
+    int heading = self.shade < 50 ? -1 : (self.shade >= 110 ? 1 : 0);
+    const uint32_t drift = rnd() % 6u;
+    if (drift == 0) heading = std::max(-1, heading - 1);
+    else if (drift == 1) heading = std::min(1, heading + 1);
+
+    int shootX = x + heading;
+    int shootY = y - 1;
+    int shootHeading = heading;
+    if (!inBounds(shootX, shootY) || m_cells[index(shootX, shootY)].id != Material::Empty) {
+        shootX = x;
+        shootY = y - 1;
+        shootHeading = 0;
+    }
+    if (!inBounds(shootX, shootY) || m_cells[index(shootX, shootY)].id != Material::Empty) {
+        const int side = heading != 0 ? heading : ((rnd() & 1u) ? 1 : -1);
+        shootX = x + side;
+        shootY = y;
+        shootHeading = side;
+    }
+    if (!inBounds(shootX, shootY) || m_cells[index(shootX, shootY)].id != Material::Empty) return false;
+    if (!drinkFromRoot(x, y)) return false;
+
+    Cell& shoot = m_cells[index(shootX, shootY)];
+    become(shoot, Material::Plant, 0);
+    const uint32_t jitter = rnd() % 36u;
+    if (shootHeading < 0) shoot.shade = uint8_t(jitter);
+    else if (shootHeading > 0) shoot.shade = uint8_t(114 + jitter);
+    else shoot.shade = uint8_t(52 + jitter);
+
+    if ((rnd() % 2u) == 0) {
+        const int leafSide = shootHeading != 0 ? shootHeading : ((rnd() & 1u) ? 1 : -1);
+        const int leafX = x + leafSide;
+        const int leafY = (rnd() & 1u) ? y - 1 : y;
+        if (inBounds(leafX, leafY) && m_cells[index(leafX, leafY)].id == Material::Empty) {
+            Cell& leaf = m_cells[index(leafX, leafY)];
+            become(leaf, Material::Plant, 0);
+            leaf.shade = uint8_t(214 + (rnd() % 36u));
+        }
+    }
+
+    if ((rnd() % 4u) == 0) {
+        const int fork = shootHeading == 0 ? ((rnd() & 1u) ? 1 : -1) : -shootHeading;
+        const int forkX = x + fork;
+        const int forkY = y - 1;
+        const bool forkUp = inBounds(forkX, forkY) && m_cells[index(forkX, forkY)].id == Material::Empty;
+        const int branchX = forkUp ? forkX : x + fork;
+        const int branchY = forkUp ? forkY : y;
+        if (inBounds(branchX, branchY) && m_cells[index(branchX, branchY)].id == Material::Empty &&
+            drinkFromRoot(x, y)) {
+            Cell& branch = m_cells[index(branchX, branchY)];
+            become(branch, Material::Plant, 0);
+            const uint32_t branchJitter = rnd() % 36u;
+            branch.shade = fork < 0 ? uint8_t(branchJitter) : uint8_t(114 + branchJitter);
+        }
+    }
+    return true;
 }
 
 void ParticleSimulator::become(Cell& cell, Material material, uint8_t life) {
