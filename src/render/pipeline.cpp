@@ -4,7 +4,7 @@
 namespace {
 
 vk::DescriptorSetLayout samplerLayout(vk::Device device, uint32_t bindings) {
-    vk::DescriptorSetLayoutBinding binding[2];
+    vk::DescriptorSetLayoutBinding binding[3];
     for (uint32_t i = 0; i < bindings; ++i) {
         binding[i].binding = i;
         binding[i].descriptorType = vk::DescriptorType::eCombinedImageSampler;
@@ -38,7 +38,7 @@ void Render::createPipeline() {
     SPDLOG_INFO("Creating Pipeline");
 
     m_SampleLayout = samplerLayout(m_LogicalDevice, 1);
-    m_CompositeSetLayout = samplerLayout(m_LogicalDevice, 2);
+    m_CompositeSetLayout = samplerLayout(m_LogicalDevice, 3);
     m_PostLayout = pipelineLayout(m_LogicalDevice, m_SampleLayout);
     m_CompositeLayout = pipelineLayout(m_LogicalDevice, m_CompositeSetLayout);
 

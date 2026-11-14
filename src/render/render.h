@@ -54,9 +54,13 @@ private:
         ColorTarget bright;
         ColorTarget blurA;
         ColorTarget blurB;
+        ColorTarget lightA;
+        ColorTarget lightB;
         vk::DescriptorSet brightSet;
         vk::DescriptorSet blurFromBright;
         vk::DescriptorSet blurFromA;
+        vk::DescriptorSet lightFromBright;
+        vk::DescriptorSet lightFromA;
         vk::DescriptorSet compositeSet;
         vk::Extent2D brightExtent;
         vk::Extent2D blurExtent;

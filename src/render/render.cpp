@@ -153,6 +153,19 @@ void Render::draw(std::span<const uint8_t> rgba, int hudPixels) {
         &panelU, sizeof(panelU), black
     );
 
+    const float lightVertical[2] = {0.f, 1.f / static_cast<float>(bloom.brightExtent.height)};
+    drawFullscreen(
+        commandBuffer, m_BlurPipeline, m_PostLayout, m_OffscreenPass,
+        bloom.lightA.framebuffer, bloom.brightExtent, bloom.lightFromBright,
+        lightVertical, sizeof(lightVertical), black
+    );
+    const float lightHorizontal[2] = {1.f / static_cast<float>(bloom.brightExtent.width), 0.f};
+    drawFullscreen(
+        commandBuffer, m_BlurPipeline, m_PostLayout, m_OffscreenPass,
+        bloom.lightB.framebuffer, bloom.brightExtent, bloom.lightFromA,
+        lightHorizontal, sizeof(lightHorizontal), black
+    );
+
     const float vertical[2] = {0.f, 1.f / static_cast<float>(bloom.blurExtent.height)};
     drawFullscreen(
         commandBuffer, m_BlurPipeline, m_PostLayout, m_OffscreenPass,
@@ -353,8 +366,8 @@ void Render::createBloomTargets() {
         std::max(m_SwapchainExtent.height / 16, 1u)
     };
 
-    constexpr uint32_t kSampleSets = MAX_FRAMES_IN_FLIGHT * 3;
-    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eCombinedImageSampler, kSampleSets + MAX_FRAMES_IN_FLIGHT * 2};
+    constexpr uint32_t kSampleSets = MAX_FRAMES_IN_FLIGHT * 5;
+    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eCombinedImageSampler, kSampleSets + MAX_FRAMES_IN_FLIGHT * 3};
     vk::DescriptorPoolCreateInfo poolInfo;
     poolInfo.maxSets = kSampleSets + MAX_FRAMES_IN_FLIGHT;
     poolInfo.poolSizeCount = 1;
@@ -390,19 +403,26 @@ void Render::createBloomTargets() {
         createColorTarget(frame.bright, brightExtent);
         createColorTarget(frame.blurA, blurExtent);
         createColorTarget(frame.blurB, blurExtent);
+        createColorTarget(frame.lightA, brightExtent);
+        createColorTarget(frame.lightB, brightExtent);
 
-        const size_t setIndex = static_cast<size_t>(i) * 3;
+        const size_t setIndex = static_cast<size_t>(i) * 5;
         frame.brightSet = sampleSets[setIndex];
         frame.blurFromBright = sampleSets[setIndex + 1];
         frame.blurFromA = sampleSets[setIndex + 2];
+        frame.lightFromBright = sampleSets[setIndex + 3];
+        frame.lightFromA = sampleSets[setIndex + 4];
         frame.compositeSet = compositeSets[static_cast<size_t>(i)];
 
         const vk::ImageView scene = m_Targets[static_cast<size_t>(i)].view;
         writeSampler(frame.brightSet, 0, m_Sampler, scene);
         writeSampler(frame.blurFromBright, 0, m_LinearSampler, frame.bright.view);
         writeSampler(frame.blurFromA, 0, m_LinearSampler, frame.blurA.view);
+        writeSampler(frame.lightFromBright, 0, m_LinearSampler, frame.bright.view);
+        writeSampler(frame.lightFromA, 0, m_LinearSampler, frame.lightA.view);
         writeSampler(frame.compositeSet, 0, m_Sampler, scene);
         writeSampler(frame.compositeSet, 1, m_LinearSampler, frame.blurB.view);
+        writeSampler(frame.compositeSet, 2, m_LinearSampler, frame.lightB.view);
     }
 }
 
@@ -412,9 +432,13 @@ void Render::destroyBloomTargets() {
         destroyColorTarget(frame.bright);
         destroyColorTarget(frame.blurA);
         destroyColorTarget(frame.blurB);
+        destroyColorTarget(frame.lightA);
+        destroyColorTarget(frame.lightB);
         frame.brightSet = nullptr;
         frame.blurFromBright = nullptr;
         frame.blurFromA = nullptr;
+        frame.lightFromBright = nullptr;
+        frame.lightFromA = nullptr;
         frame.compositeSet = nullptr;
     }
     if (m_DescriptorPool) {

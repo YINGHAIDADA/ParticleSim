@@ -86,6 +86,8 @@ private:
     void moveGas(int x, int y);
     void spawn(int x, int y, Material material, uint8_t life);
     void explode(int cx, int cy);
+    void shove(int cx, int cy, int radius, int lift, int power, bool liquidsOnly);
+    bool nudge(int& x, int& y, int cx, int cy, int lift, int distance);
     bool rooted(int x, int y) const;
     bool drinkWater(int x, int y);
     bool sproutAbove(int x, int y, bool branch);

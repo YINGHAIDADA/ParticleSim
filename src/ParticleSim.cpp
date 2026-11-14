@@ -52,6 +52,32 @@ int vary(uint8_t base, uint8_t shade, uint8_t amount) {
     return std::clamp(int(base) + delta, 0, 255);
 }
 
+bool flungByBlast(Material material, bool liquidsOnly) {
+    switch (material) {
+    case Material::Water:
+    case Material::Oil:
+    case Material::Acid:
+        return true;
+    case Material::Sand:
+    case Material::Salt:
+    case Material::Gunpowder:
+    case Material::Ember:
+    case Material::Lava:
+        return !liquidsOnly;
+    case Material::Empty:
+    case Material::Wood:
+    case Material::Fire:
+    case Material::Smoke:
+    case Material::Steam:
+    case Material::Stone:
+    case Material::Plant:
+    case Material::Count:
+        return false;
+    }
+    const Material unhandled = material;
+    throw std::logic_error("unhandled material " + std::to_string(int(unhandled)));
+}
+
 bool dissolves(Material material) {
     switch (material) {
     case Material::Sand:
@@ -574,6 +600,7 @@ bool ParticleSimulator::react(int x, int y) {
                 become(other, Material::Stone, 0);
                 spawn(nx - 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
                 spawn(nx + 1, ny, Material::Ember, uint8_t(20 + (rnd() % 16u)));
+                shove(x, y, 3, 4, 1, true);
                 return true;
             }
             if (other.id == Material::Fire) {
@@ -850,8 +877,59 @@ void ParticleSimulator::moveGas(int x, int y) {
     trySwap(x, y, x - direction, y);
 }
 
+void ParticleSimulator::shove(int cx, int cy, int radius, int lift, int power, bool liquidsOnly) {
+    if (radius < 1 || power < 1) return;
+    for (int ring = radius; ring >= 1; --ring) {
+        const int kick = power + (radius - ring) * 2;
+        for (int y = cy - ring; y <= cy + ring; ++y) {
+            for (int x = cx - ring; x <= cx + ring; ++x) {
+                if (std::max(std::abs(x - cx), std::abs(y - cy)) != ring) continue;
+                if (!inBounds(x, y)) continue;
+                if (!flungByBlast(m_cells[index(x, y)].id, liquidsOnly)) continue;
+                int px = x;
+                int py = y;
+                nudge(px, py, cx, cy, lift, kick);
+            }
+        }
+    }
+}
+
+bool ParticleSimulator::nudge(int& x, int& y, int cx, int cy, int lift, int distance) {
+    if (distance < 1) return false;
+    const int dx = x - cx;
+    const int rise = (y - cy) - lift;
+    const int sx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    const int sy = rise < 0 || (rise == 0 && lift > 0) ? -1 : (rise > 0 ? 1 : 0);
+    if (sx == 0 && sy == 0) return false;
+
+    int px = x;
+    int py = y;
+    int landedX = x;
+    int landedY = y;
+    for (int step = 0; step < distance; ++step) {
+        const int nx = px + sx;
+        const int ny = py + sy;
+        if (!inBounds(nx, ny) || m_cells[index(nx, ny)].id != Material::Empty) break;
+        landedX = nx;
+        landedY = ny;
+        px = nx;
+        py = ny;
+    }
+    if (landedX == x && landedY == y) return false;
+
+    Cell& src = m_cells[index(x, y)];
+    Cell& dst = m_cells[index(landedX, landedY)];
+    src.updated = 1;
+    dst.updated = 1;
+    std::swap(src, dst);
+    x = landedX;
+    y = landedY;
+    return true;
+}
+
 void ParticleSimulator::explode(int cx, int cy) {
     constexpr int kRadius = 4;
+    shove(cx, cy, 16, 9, 12, false);
     for (int y = cy - kRadius; y <= cy + kRadius; ++y) {
         for (int x = cx - kRadius; x <= cx + kRadius; ++x) {
             if (!inBounds(x, y)) continue;
