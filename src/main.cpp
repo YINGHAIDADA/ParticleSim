@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <span>
@@ -83,15 +84,15 @@ public:
             static_cast<uint32_t>(m_Simulation->height())
         );
 
-        const float panel = hudWidth() / float(std::max(m_Simulation->width(), 1));
-        m_CenterU = (panel + 1.f) * 0.5f;
-        m_CenterV = 0.5f;
+        m_HomeX = m_CamX = m_Simulation->viewX();
+        m_HomeY = m_CamY = m_Simulation->viewY();
+        m_HomeZoom = m_Zoom = m_Simulation->viewZoom();
         m_BrushCursor.reset(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR));
         m_HandCursor.reset(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER));
         applyCursor();
 
         SPDLOG_INFO(
-            "左键绘制，右键擦除，H 手型拖拽缩放，B 画笔，1-0 切换材料，P 植物，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
+            "左键绘制，右键擦除，H 手型拖拽缩放，B 画笔，R 重置视角，1-0 切换材料，P 植物，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
         );
         refreshTitle(0.f, true);
     }
@@ -119,6 +120,7 @@ public:
                 !overHud(m_PointerX, m_PointerY)) {
                 m_Simulation->paint(simX, simY, m_Simulation->brushRadius(), brushMaterial());
             }
+            m_Simulation->setView(m_CamX, m_CamY, m_Zoom);
             m_Simulation->publish();
             drawHud(
                 m_Simulation->pixelData(),
@@ -128,12 +130,13 @@ public:
                 m_Fps,
                 m_Tool
             );
+            const float panel = panelU();
             m_Render->draw(
                 std::span<const uint8_t>(m_Simulation->pixels(), m_Simulation->pixelBytes()),
                 hudWidth(),
-                m_Zoom,
-                m_CenterU,
-                m_CenterV
+                1.f,
+                (panel + 1.f) * 0.5f,
+                0.5f
             );
             refreshTitle(deltaTime, false);
         }
@@ -153,8 +156,11 @@ private:
     bool m_Panning = false;
     CanvasTool m_Tool = CanvasTool::Brush;
     float m_Zoom = 1.f;
-    float m_CenterU = 0.5f;
-    float m_CenterV = 0.5f;
+    float m_CamX = 0.f;
+    float m_CamY = 0.f;
+    float m_HomeX = 0.f;
+    float m_HomeY = 0.f;
+    float m_HomeZoom = 1.f;
     float m_GrabU = 0.f;
     float m_GrabV = 0.f;
     float m_PointerX = 0.f;
@@ -180,8 +186,8 @@ private:
         float screenU = 0.f;
         float screenV = 0.f;
         float localX = 0.f;
-        float worldU = 0.f;
-        float worldV = 0.f;
+        float worldX = 0.f;
+        float worldY = 0.f;
     };
 
     WindowSpan windowSpan() const {
@@ -200,38 +206,27 @@ private:
         const float panel = panelU();
         const float canvas = std::max(1.f - panel, 0.0001f);
         const float zoom = std::max(m_Zoom, 0.05f);
+        const float canvasPx = canvas * float(m_Simulation->width());
         ScreenPoint point;
         point.screenU = x / float(window.width);
         point.screenV = y / float(window.height);
         point.localX = (point.screenU - panel) / canvas;
-        point.worldU = m_CenterU + (point.localX - 0.5f) * canvas / zoom;
-        point.worldV = m_CenterV + (point.screenV - 0.5f) / zoom;
+        point.worldX = m_CamX + (point.localX - 0.5f) * canvasPx / zoom;
+        point.worldY = m_CamY + (point.screenV - 0.5f) * float(m_Simulation->height()) / zoom;
         return point;
     }
 
-    void clampView() {
-        const float panel = panelU();
-        const float canvas = std::max(1.f - panel, 0.0001f);
-        const float zoom = std::max(m_Zoom, 0.05f);
-        const float halfW = 0.5f * canvas / zoom;
-        const float halfH = 0.5f / zoom;
-        if (halfW >= canvas * 0.5f) m_CenterU = std::clamp(m_CenterU, 1.f - halfW, panel + halfW);
-        else m_CenterU = std::clamp(m_CenterU, panel + halfW, 1.f - halfW);
-        if (halfH >= 0.5f) m_CenterV = std::clamp(m_CenterV, 1.f - halfH, halfH);
-        else m_CenterV = std::clamp(m_CenterV, halfH, 1.f - halfH);
-    }
-
-    void lookAt(float x, float y, float worldU, float worldV) {
+    void lookAt(float x, float y, float worldX, float worldY) {
         const WindowSpan window = windowSpan();
         const float panel = panelU();
         const float canvas = std::max(1.f - panel, 0.0001f);
         const float zoom = std::max(m_Zoom, 0.05f);
+        const float canvasPx = canvas * float(m_Simulation->width());
         const float screenU = x / float(window.width);
         const float screenV = y / float(window.height);
         const float localX = (screenU - panel) / canvas;
-        m_CenterU = worldU - (localX - 0.5f) * canvas / zoom;
-        m_CenterV = worldV - (screenV - 0.5f) / zoom;
-        clampView();
+        m_CamX = worldX - (localX - 0.5f) * canvasPx / zoom;
+        m_CamY = worldY - (screenV - 0.5f) * float(m_Simulation->height()) / zoom;
     }
 
     void hudPixel(float x, float y, int& tx, int& ty) const {
@@ -250,10 +245,9 @@ private:
     bool simPixel(float x, float y, int& simX, int& simY) const {
         const ScreenPoint point = mapPointer(x, y);
         if (point.screenU < panelU()) return false;
-        if (point.worldU < panelU() || point.worldU >= 1.f || point.worldV < 0.f || point.worldV >= 1.f) return false;
-        simX = std::clamp(int(point.worldU * m_Simulation->width()), 0, m_Simulation->width() - 1);
-        simY = std::clamp(int(point.worldV * m_Simulation->height()), 0, m_Simulation->height() - 1);
-        return simX >= hudWidth();
+        simX = int(std::floor(point.worldX));
+        simY = int(std::floor(point.worldY));
+        return true;
     }
 
     void applyCursor() {
@@ -365,6 +359,13 @@ private:
                 case SDLK_H:
                     setTool(CanvasTool::Hand);
                     break;
+                case SDLK_R:
+                    m_CamX = m_HomeX;
+                    m_CamY = m_HomeY;
+                    m_Zoom = m_HomeZoom;
+                    m_Panning = false;
+                    refreshTitle(0.f, true);
+                    break;
                 case SDLK_LEFTBRACKET:
                     m_Simulation->setBrushRadius(m_Simulation->brushRadius() - 1);
                     refreshTitle(0.f, true);
@@ -384,8 +385,8 @@ private:
                     const ScreenPoint before = mapPointer(m_PointerX, m_PointerY);
                     if (before.screenU < panelU()) break;
                     const float factor = event.wheel.y > 0.f ? 1.12f : 1.f / 1.12f;
-                    m_Zoom = std::clamp(m_Zoom * factor, 0.4f, 12.f);
-                    lookAt(m_PointerX, m_PointerY, before.worldU, before.worldV);
+                    m_Zoom = std::clamp(m_Zoom * factor, 0.2f, 16.f);
+                    lookAt(m_PointerX, m_PointerY, before.worldX, before.worldY);
                     refreshTitle(0.f, true);
                     break;
                 }
@@ -418,8 +419,8 @@ private:
                         const ScreenPoint point = mapPointer(m_PointerX, m_PointerY);
                         if (point.screenU >= panelU()) {
                             m_Panning = true;
-                            m_GrabU = point.worldU;
-                            m_GrabV = point.worldV;
+                            m_GrabU = point.worldX;
+                            m_GrabV = point.worldY;
                         }
                     }
                     break;

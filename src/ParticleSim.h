@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 enum class Material : uint8_t {
@@ -45,6 +47,10 @@ public:
     void cancelIntro() { m_intro = false; }
     void setBrushRadius(int radius);
     int brushRadius() const { return m_brush; }
+    void setView(float centerX, float centerY, float zoom);
+    float viewX() const { return m_viewX; }
+    float viewY() const { return m_viewY; }
+    float viewZoom() const { return m_viewZoom; }
 
     const uint8_t* pixels() const { return m_pixels.data(); }
     int width() const { return m_width; }
@@ -100,8 +106,30 @@ private:
     void become(Cell& cell, Material material, uint8_t life);
     bool neighborAt(int x, int y, int direction, int& nx, int& ny) const;
     bool inBounds(int x, int y) const;
-    int index(int x, int y) const;
+    void discardEmptyChunks();
     uint32_t rnd();
+
+    static constexpr int kChunkSize = 64;
+    struct ChunkKey {
+        int x = 0;
+        int y = 0;
+        bool operator==(const ChunkKey& other) const { return x == other.x && y == other.y; }
+    };
+    struct ChunkKeyHash {
+        size_t operator()(ChunkKey key) const noexcept {
+            const uint64_t x = static_cast<uint32_t>(key.x);
+            const uint64_t y = static_cast<uint32_t>(key.y);
+            return static_cast<size_t>(x * 0x9E3779B185EBCA87ull ^ (y + 0xC2B2AE3D27D4EB4full + (x << 6) + (x >> 2)));
+        }
+    };
+    struct Chunk {
+        Cell cells[kChunkSize * kChunkSize]{};
+    };
+
+    ChunkKey chunkKey(int x, int y) const;
+    int chunkLocal(int x, int y) const;
+    Cell& at(int x, int y);
+    const Cell& at(int x, int y) const;
 
     int m_width = 0;
     int m_height = 0;
@@ -119,8 +147,16 @@ private:
     int m_lavaY = 0;
     int m_fuseX = -1;
     int m_fuseY = -1;
+    int m_stageLeft = 0;
+    int m_stageTop = 0;
+    int m_stageRight = 0;
+    int m_stageBottom = 0;
+    float m_viewX = 0.f;
+    float m_viewY = 0.f;
+    float m_viewZoom = 1.f;
     IntroLetter m_letters[16]{};
     Material m_material = Material::Sand;
-    std::vector<Cell> m_cells;
+    Cell m_sink{};
+    std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash> m_chunks;
     std::vector<uint8_t> m_pixels;
 };
