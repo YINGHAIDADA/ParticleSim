@@ -8,7 +8,13 @@ namespace {
 
 constexpr int kPanelWidth = 118;
 constexpr int kRowHeight = 18;
-constexpr int kListTop = 8;
+constexpr int kToolTop = 6;
+constexpr int kToolHeight = 16;
+constexpr int kListTop = 28;
+constexpr int kBrushX = 4;
+constexpr int kBrushW = 54;
+constexpr int kHandX = 62;
+constexpr int kHandW = 52;
 
 constexpr Material kPalette[] = {
     Material::Sand,
@@ -130,10 +136,24 @@ std::optional<Material> hudMaterialAt(int x, int y) {
     return kPalette[row];
 }
 
-void drawHud(uint8_t* pixels, int width, int height, const ParticleSimulator& simulation, float fps) {
+std::optional<CanvasTool> hudToolAt(int x, int y) {
+    if (y < kToolTop || y >= kToolTop + kToolHeight) return std::nullopt;
+    if (x >= kBrushX && x < kBrushX + kBrushW) return CanvasTool::Brush;
+    if (x >= kHandX && x < kHandX + kHandW) return CanvasTool::Hand;
+    return std::nullopt;
+}
+
+void drawHud(uint8_t* pixels, int width, int height, const ParticleSimulator& simulation, float fps, CanvasTool tool) {
     if (width < kPanelWidth || height < 32) return;
 
     fillRect(pixels, width, height, 0, 0, kPanelWidth, height, 16, 16, 18, 255);
+
+    const auto toolButton = [&](int x, int w, bool selected, const char* label) {
+        fillRect(pixels, width, height, x, kToolTop, w, kToolHeight, selected ? 48 : 28, selected ? 48 : 28, selected ? 54 : 32, 255);
+        drawText(pixels, width, height, x + 15, kToolTop + 4, label);
+    };
+    toolButton(kBrushX, kBrushW, tool == CanvasTool::Brush, "DRAW");
+    toolButton(kHandX, kHandW, tool == CanvasTool::Hand, "HAND");
 
     for (int i = 0; i < static_cast<int>(std::size(kPalette)); ++i) {
         const int y = kListTop + i * kRowHeight;

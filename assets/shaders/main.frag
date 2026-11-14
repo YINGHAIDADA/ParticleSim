@@ -8,12 +8,33 @@ layout(set = 0, binding = 1) uniform sampler2D uBloom;
 layout(set = 0, binding = 2) uniform sampler2D uLight;
 layout(push_constant) uniform PushConstants {
     float panelU;
+    float zoom;
+    vec2 center;
 } pc;
 
+vec2 sceneUV(vec2 screenUV) {
+    if (screenUV.x < pc.panelU) return screenUV;
+    float canvas = max(1.0 - pc.panelU, 0.0001);
+    float localX = (screenUV.x - pc.panelU) / canvas;
+    float zoom = max(pc.zoom, 0.05);
+    return vec2(
+        pc.center.x + (localX - 0.5) * canvas / zoom,
+        pc.center.y + (screenUV.y - 0.5) / zoom
+    );
+}
+
 void main() {
-    vec4 scene = texture(uScene, vUV);
+    bool inHud = vUV.x < pc.panelU;
+    vec2 uv = sceneUV(vUV);
+    bool inSim = uv.x >= pc.panelU && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
+    if (!inHud && !inSim) {
+        outColor = vec4(0.1, 0.1, 0.1, 1.0);
+        return;
+    }
+
+    vec4 scene = texture(uScene, inHud ? vUV : uv);
     vec3 albedo = mix(vec3(0.1), scene.rgb, scene.a);
-    if (vUV.x >= pc.panelU) {
+    if (!inHud) {
         vec3 light = texture(uLight, vUV).rgb;
         float heat = clamp(dot(light, vec3(0.6, 0.3, 0.1)) * 4.0, 0.0, 1.6);
         albedo *= vec3(1.0) + heat * vec3(1.2, 0.38, 0.05);

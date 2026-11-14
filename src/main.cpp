@@ -9,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
 
 #include "Hud.h"
 #include "ParticleSim.h"
@@ -20,6 +21,12 @@ namespace {
 struct WindowDelete {
     void operator()(SDL_Window* window) const {
         if (window) SDL_DestroyWindow(window);
+    }
+};
+
+struct CursorDelete {
+    void operator()(SDL_Cursor* cursor) const {
+        if (cursor) SDL_DestroyCursor(cursor);
     }
 };
 
@@ -76,13 +83,22 @@ public:
             static_cast<uint32_t>(m_Simulation->height())
         );
 
+        const float panel = hudWidth() / float(std::max(m_Simulation->width(), 1));
+        m_CenterU = (panel + 1.f) * 0.5f;
+        m_CenterV = 0.5f;
+        m_BrushCursor.reset(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR));
+        m_HandCursor.reset(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER));
+        applyCursor();
+
         SPDLOG_INFO(
-            "左键绘制，右键擦除，1-0 切换材料，P 植物，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
+            "左键绘制，右键擦除，H 手型拖拽缩放，B 画笔，1-0 切换材料，P 植物，滚轮或 [ ] 调整笔刷，空格暂停，C 清空"
         );
         refreshTitle(0.f, true);
     }
 
     ~Application() {
+        m_BrushCursor.reset();
+        m_HandCursor.reset();
         m_Render.reset();
         m_Window.reset();
         SDL_Quit();
@@ -97,12 +113,28 @@ public:
 
             handleEvents();
             m_Simulation->update(deltaTime);
-            if (m_Painting && !hudMaterialAt(m_MouseX, m_MouseY)) {
-                m_Simulation->paint(m_MouseX, m_MouseY, m_Simulation->brushRadius(), brushMaterial());
+            int simX = 0;
+            int simY = 0;
+            if (m_Tool == CanvasTool::Brush && m_Painting && simPixel(m_PointerX, m_PointerY, simX, simY) &&
+                !overHud(m_PointerX, m_PointerY)) {
+                m_Simulation->paint(simX, simY, m_Simulation->brushRadius(), brushMaterial());
             }
             m_Simulation->publish();
-            drawHud(m_Simulation->pixelData(), m_Simulation->width(), m_Simulation->height(), *m_Simulation, m_Fps);
-            m_Render->draw(std::span<const uint8_t>(m_Simulation->pixels(), m_Simulation->pixelBytes()), hudWidth());
+            drawHud(
+                m_Simulation->pixelData(),
+                m_Simulation->width(),
+                m_Simulation->height(),
+                *m_Simulation,
+                m_Fps,
+                m_Tool
+            );
+            m_Render->draw(
+                std::span<const uint8_t>(m_Simulation->pixels(), m_Simulation->pixelBytes()),
+                hudWidth(),
+                m_Zoom,
+                m_CenterU,
+                m_CenterV
+            );
             refreshTitle(deltaTime, false);
         }
     }
@@ -118,10 +150,19 @@ private:
     bool m_Running = true;
     bool m_Painting = false;
     bool m_Erasing = false;
-    int m_MouseX = 0;
-    int m_MouseY = 0;
+    bool m_Panning = false;
+    CanvasTool m_Tool = CanvasTool::Brush;
+    float m_Zoom = 1.f;
+    float m_CenterU = 0.5f;
+    float m_CenterV = 0.5f;
+    float m_GrabU = 0.f;
+    float m_GrabV = 0.f;
+    float m_PointerX = 0.f;
+    float m_PointerY = 0.f;
     bool m_LeftDown = false;
     bool m_RightDown = false;
+    std::unique_ptr<SDL_Cursor, CursorDelete> m_BrushCursor;
+    std::unique_ptr<SDL_Cursor, CursorDelete> m_HandCursor;
     float m_TitleTime = 0.f;
     int m_TitleFrames = 0;
     float m_Fps = 0.f;
@@ -130,14 +171,115 @@ private:
         return m_Erasing ? Material::Empty : m_Simulation->material();
     }
 
-    void setMouse(float x, float y) {
-        int windowWidth = 1;
-        int windowHeight = 1;
-        SDL_GetWindowSize(m_Window.get(), &windowWidth, &windowHeight);
-        windowWidth = std::max(windowWidth, 1);
-        windowHeight = std::max(windowHeight, 1);
-        m_MouseX = std::clamp(int(x / float(windowWidth) * m_Simulation->width()), 0, m_Simulation->width() - 1);
-        m_MouseY = std::clamp(int(y / float(windowHeight) * m_Simulation->height()), 0, m_Simulation->height() - 1);
+    struct WindowSpan {
+        int width = 1;
+        int height = 1;
+    };
+
+    struct ScreenPoint {
+        float screenU = 0.f;
+        float screenV = 0.f;
+        float localX = 0.f;
+        float worldU = 0.f;
+        float worldV = 0.f;
+    };
+
+    WindowSpan windowSpan() const {
+        int width = 1;
+        int height = 1;
+        SDL_GetWindowSize(m_Window.get(), &width, &height);
+        return {std::max(width, 1), std::max(height, 1)};
+    }
+
+    float panelU() const {
+        return hudWidth() / float(std::max(m_Simulation->width(), 1));
+    }
+
+    ScreenPoint mapPointer(float x, float y) const {
+        const WindowSpan window = windowSpan();
+        const float panel = panelU();
+        const float canvas = std::max(1.f - panel, 0.0001f);
+        const float zoom = std::max(m_Zoom, 0.05f);
+        ScreenPoint point;
+        point.screenU = x / float(window.width);
+        point.screenV = y / float(window.height);
+        point.localX = (point.screenU - panel) / canvas;
+        point.worldU = m_CenterU + (point.localX - 0.5f) * canvas / zoom;
+        point.worldV = m_CenterV + (point.screenV - 0.5f) / zoom;
+        return point;
+    }
+
+    void clampView() {
+        const float panel = panelU();
+        const float canvas = std::max(1.f - panel, 0.0001f);
+        const float zoom = std::max(m_Zoom, 0.05f);
+        const float halfW = 0.5f * canvas / zoom;
+        const float halfH = 0.5f / zoom;
+        if (halfW >= canvas * 0.5f) m_CenterU = std::clamp(m_CenterU, 1.f - halfW, panel + halfW);
+        else m_CenterU = std::clamp(m_CenterU, panel + halfW, 1.f - halfW);
+        if (halfH >= 0.5f) m_CenterV = std::clamp(m_CenterV, 1.f - halfH, halfH);
+        else m_CenterV = std::clamp(m_CenterV, halfH, 1.f - halfH);
+    }
+
+    void lookAt(float x, float y, float worldU, float worldV) {
+        const WindowSpan window = windowSpan();
+        const float panel = panelU();
+        const float canvas = std::max(1.f - panel, 0.0001f);
+        const float zoom = std::max(m_Zoom, 0.05f);
+        const float screenU = x / float(window.width);
+        const float screenV = y / float(window.height);
+        const float localX = (screenU - panel) / canvas;
+        m_CenterU = worldU - (localX - 0.5f) * canvas / zoom;
+        m_CenterV = worldV - (screenV - 0.5f) / zoom;
+        clampView();
+    }
+
+    void hudPixel(float x, float y, int& tx, int& ty) const {
+        const WindowSpan window = windowSpan();
+        tx = std::clamp(int(x / float(window.width) * m_Simulation->width()), 0, m_Simulation->width() - 1);
+        ty = std::clamp(int(y / float(window.height) * m_Simulation->height()), 0, m_Simulation->height() - 1);
+    }
+
+    bool overHud(float x, float y) const {
+        int tx = 0;
+        int ty = 0;
+        hudPixel(x, y, tx, ty);
+        return hudMaterialAt(tx, ty).has_value() || hudToolAt(tx, ty).has_value();
+    }
+
+    bool simPixel(float x, float y, int& simX, int& simY) const {
+        const ScreenPoint point = mapPointer(x, y);
+        if (point.screenU < panelU()) return false;
+        if (point.worldU < panelU() || point.worldU >= 1.f || point.worldV < 0.f || point.worldV >= 1.f) return false;
+        simX = std::clamp(int(point.worldU * m_Simulation->width()), 0, m_Simulation->width() - 1);
+        simY = std::clamp(int(point.worldV * m_Simulation->height()), 0, m_Simulation->height() - 1);
+        return simX >= hudWidth();
+    }
+
+    void applyCursor() {
+        SDL_Cursor* cursor = nullptr;
+        switch (m_Tool) {
+        case CanvasTool::Brush:
+            cursor = m_BrushCursor.get();
+            break;
+        case CanvasTool::Hand:
+            cursor = m_HandCursor.get();
+            break;
+        default: {
+            const CanvasTool unhandled = m_Tool;
+            throw std::logic_error("unhandled canvas tool " + std::to_string(int(unhandled)));
+        }
+        }
+        if (cursor) SDL_SetCursor(cursor);
+    }
+
+    void setTool(CanvasTool tool) {
+        if (m_Tool == tool) return;
+        m_Tool = tool;
+        m_Panning = false;
+        m_Painting = false;
+        applyCursor();
+        refreshTitle(0.f, true);
     }
 
     void refreshTitle(float deltaSeconds, bool force) {
@@ -154,15 +296,33 @@ private:
         if (!force) return;
 
         char title[160];
-        std::snprintf(
-            title,
-            sizeof(title),
-            "ParticleSim | %s | brush %d | %.0f fps%s",
-            materialName(m_Simulation->material()),
-            m_Simulation->brushRadius(),
-            m_Fps,
-            m_Simulation->running() ? "" : " | paused"
-        );
+        switch (m_Tool) {
+        case CanvasTool::Hand:
+            std::snprintf(
+                title,
+                sizeof(title),
+                "ParticleSim | hand | zoom %.2f | %.0f fps%s",
+                m_Zoom,
+                m_Fps,
+                m_Simulation->running() ? "" : " | paused"
+            );
+            break;
+        case CanvasTool::Brush:
+            std::snprintf(
+                title,
+                sizeof(title),
+                "ParticleSim | %s | brush %d | %.0f fps%s",
+                materialName(m_Simulation->material()),
+                m_Simulation->brushRadius(),
+                m_Fps,
+                m_Simulation->running() ? "" : " | paused"
+            );
+            break;
+        default: {
+            const CanvasTool unhandled = m_Tool;
+            throw std::logic_error("unhandled canvas tool " + std::to_string(int(unhandled)));
+        }
+        }
         SDL_SetWindowTitle(m_Window.get(), title);
     }
 
@@ -199,6 +359,12 @@ private:
                 case SDLK_C:
                     m_Simulation->clear();
                     break;
+                case SDLK_B:
+                    setTool(CanvasTool::Brush);
+                    break;
+                case SDLK_H:
+                    setTool(CanvasTool::Hand);
+                    break;
                 case SDLK_LEFTBRACKET:
                     m_Simulation->setBrushRadius(m_Simulation->brushRadius() - 1);
                     refreshTitle(0.f, true);
@@ -214,6 +380,15 @@ private:
             }
             case SDL_EVENT_MOUSE_WHEEL: {
                 if (event.wheel.y == 0.f) break;
+                if (m_Tool == CanvasTool::Hand) {
+                    const ScreenPoint before = mapPointer(m_PointerX, m_PointerY);
+                    if (before.screenU < panelU()) break;
+                    const float factor = event.wheel.y > 0.f ? 1.12f : 1.f / 1.12f;
+                    m_Zoom = std::clamp(m_Zoom * factor, 0.4f, 12.f);
+                    lookAt(m_PointerX, m_PointerY, before.worldU, before.worldV);
+                    refreshTitle(0.f, true);
+                    break;
+                }
                 const int step = event.wheel.y > 0.f ? 1 : -1;
                 m_Simulation->setBrushRadius(m_Simulation->brushRadius() + step);
                 refreshTitle(0.f, true);
@@ -221,10 +396,32 @@ private:
             }
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
                 m_Simulation->cancelIntro();
-                setMouse(event.button.x, event.button.y);
-                if (const std::optional<Material> picked = hudMaterialAt(m_MouseX, m_MouseY)) {
-                    m_Simulation->setMaterial(*picked);
-                    refreshTitle(0.f, true);
+                m_PointerX = event.button.x;
+                m_PointerY = event.button.y;
+                {
+                    int hudX = 0;
+                    int hudY = 0;
+                    hudPixel(m_PointerX, m_PointerY, hudX, hudY);
+                    if (const std::optional<CanvasTool> tool = hudToolAt(hudX, hudY)) {
+                        setTool(*tool);
+                        break;
+                    }
+                    if (const std::optional<Material> picked = hudMaterialAt(hudX, hudY)) {
+                        m_Simulation->setMaterial(*picked);
+                        setTool(CanvasTool::Brush);
+                        refreshTitle(0.f, true);
+                        break;
+                    }
+                }
+                if (m_Tool == CanvasTool::Hand) {
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        const ScreenPoint point = mapPointer(m_PointerX, m_PointerY);
+                        if (point.screenU >= panelU()) {
+                            m_Panning = true;
+                            m_GrabU = point.worldU;
+                            m_GrabV = point.worldV;
+                        }
+                    }
                     break;
                 }
                 if (event.button.button == SDL_BUTTON_LEFT) m_LeftDown = true;
@@ -233,13 +430,18 @@ private:
                 m_Painting = m_LeftDown || m_RightDown;
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
-                if (event.button.button == SDL_BUTTON_LEFT) m_LeftDown = false;
+                if (event.button.button == SDL_BUTTON_LEFT) {
+                    m_LeftDown = false;
+                    m_Panning = false;
+                }
                 if (event.button.button == SDL_BUTTON_RIGHT) m_RightDown = false;
                 m_Erasing = m_RightDown;
                 m_Painting = m_LeftDown || m_RightDown;
                 break;
             case SDL_EVENT_MOUSE_MOTION:
-                setMouse(event.motion.x, event.motion.y);
+                m_PointerX = event.motion.x;
+                m_PointerY = event.motion.y;
+                if (m_Panning) lookAt(m_PointerX, m_PointerY, m_GrabU, m_GrabV);
                 break;
             default:
                 break;

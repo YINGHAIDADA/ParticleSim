@@ -26,7 +26,7 @@ public:
 
     void init(vk::Extent2D& windowSize, uint32_t textureWidth, uint32_t textureHeight);
     void resize(vk::Extent2D& newWindowSize);
-    void draw(std::span<const uint8_t> rgba, int hudPixels);
+    void draw(std::span<const uint8_t> rgba, int hudPixels, float zoom, float centerU, float centerV);
 
 private:
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;

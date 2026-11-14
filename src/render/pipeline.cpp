@@ -22,7 +22,7 @@ vk::PipelineLayout pipelineLayout(vk::Device device, vk::DescriptorSetLayout set
     vk::PushConstantRange range;
     range.stageFlags = vk::ShaderStageFlagBits::eFragment;
     range.offset = 0;
-    range.size = sizeof(float) * 2;
+    range.size = sizeof(float) * 4;
 
     vk::PipelineLayoutCreateInfo info;
     info.setLayoutCount = 1;

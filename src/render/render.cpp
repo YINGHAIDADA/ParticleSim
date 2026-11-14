@@ -85,7 +85,7 @@ void Render::resize(vk::Extent2D& newWindowSize) {
     }
 }
 
-void Render::draw(std::span<const uint8_t> rgba, int hudPixels) {
+void Render::draw(std::span<const uint8_t> rgba, int hudPixels, float zoom, float centerU, float centerV) {
     if (m_SwapchainExtent.width == 0 || m_SwapchainExtent.height == 0) {
         SDL_Delay(16);
         return;
@@ -144,13 +144,24 @@ void Render::draw(std::span<const uint8_t> rgba, int hudPixels) {
     );
     transition(commandBuffer, target, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-    const float panelU = std::clamp(static_cast<float>(hudPixels) / static_cast<float>(m_TexWidth), 0.f, 1.f);
+    struct ViewPush {
+        float panelU;
+        float zoom;
+        float centerU;
+        float centerV;
+    };
+    const ViewPush view{
+        std::clamp(static_cast<float>(hudPixels) / static_cast<float>(m_TexWidth), 0.f, 1.f),
+        std::max(zoom, 0.05f),
+        centerU,
+        centerV,
+    };
     const std::array<float, 4> black{0.f, 0.f, 0.f, 1.f};
     BloomFrame& bloom = m_Bloom[m_CurrentFrame];
     drawFullscreen(
         commandBuffer, m_BrightPipeline, m_PostLayout, m_OffscreenPass,
         bloom.bright.framebuffer, bloom.brightExtent, bloom.brightSet,
-        &panelU, sizeof(panelU), black
+        &view, sizeof(view), black
     );
 
     const float lightVertical[2] = {0.f, 1.f / static_cast<float>(bloom.brightExtent.height)};
@@ -183,7 +194,7 @@ void Render::draw(std::span<const uint8_t> rgba, int hudPixels) {
     drawFullscreen(
         commandBuffer, m_Pipeline, m_CompositeLayout, m_RenderPass,
         m_FrameBuffers[imageIndex], m_SwapchainExtent, bloom.compositeSet,
-        &panelU, sizeof(panelU), background
+        &view, sizeof(view), background
     );
     commandBuffer.end();
 
