@@ -92,6 +92,7 @@ private:
     void moveSteam(int x, int y);
     void moveGas(int x, int y);
     void spawn(int x, int y, Material material, uint8_t life);
+    void moveCell(int x, int y, int nx, int ny);
     void explode(int cx, int cy);
     void radiate(int x, int y, int power, int reach);
     int nearestHeat(int x, int y) const;
@@ -103,9 +104,12 @@ private:
     bool rooted(int x, int y) const;
     bool drinkFromRoot(int x, int y);
     bool growTree(int x, int y);
-    void become(Cell& cell, Material material, uint8_t life);
+    void become(Cell& cell, int x, int y, Material material, uint8_t life);
     bool neighborAt(int x, int y, int direction, int& nx, int& ny) const;
     bool inBounds(int x, int y) const;
+    bool keepsAwake(const Cell& cell) const;
+    void account(int x, int y, Material oldId, Material newId);
+    void touch(int x, int y);
     void discardEmptyChunks();
     uint32_t rnd();
 
@@ -124,12 +128,24 @@ private:
     };
     struct Chunk {
         Cell cells[kChunkSize * kChunkSize]{};
+        uint16_t occupied = 0;
+        uint16_t anchors = 0;
+        bool awake = true;
+        bool dirty = false;
+        bool restless = false;
+        bool woken = false;
     };
 
     ChunkKey chunkKey(int x, int y) const;
     int chunkLocal(int x, int y) const;
+    Chunk* findChunk(int x, int y);
+    const Chunk* findChunk(int x, int y) const;
+    const Cell& peek(int x, int y) const;
     Cell& at(int x, int y);
     const Cell& at(int x, int y) const;
+    void wakeAround(ChunkKey key);
+    bool hasSupport(ChunkKey key) const;
+    void cullBelow(int maxChunkY);
 
     int m_width = 0;
     int m_height = 0;
